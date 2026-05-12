@@ -16,7 +16,9 @@ impl ApplicationHandler for App {
             },
             _ => {
                 let game = self.game.as_mut().unwrap();
-                game.handle_event(event_loop, id, event);
+                if let Some(window) = self.window.as_ref() {
+                    game.handle_event(window, event_loop, id, event);
+                }
             },
         }
     }
@@ -28,6 +30,9 @@ impl ApplicationHandler for App {
     }
 
     fn resumed(&mut self, event_loop: &event_loop::ActiveEventLoop) {
+
+        
+
         let window_attributes = Window::default_attributes()
             .with_title("Game")
             .with_inner_size(winit::dpi::LogicalSize::new(640.0, 480.0));

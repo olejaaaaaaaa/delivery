@@ -57,34 +57,36 @@ impl QueuePool {
         QueuePool { queues }
     }
 
-    pub fn get(&self, flags: vk::QueueFlags) -> Option<&Queue> {
+    pub fn get(&self, flags: vk::QueueFlags) -> Option<Queue> {
         self.queues
             .iter()
             .flatten()
             .find(|q| q.flags.contains(flags))
+            .cloned()
     }
 
     pub fn get_present(&self) -> Option<Queue> {
         self.queues.iter().flatten().find(|q| q.is_present && q.flags.contains(vk::QueueFlags::GRAPHICS)).cloned()
     }
 
-    pub fn get_dedicated(&self, flags: vk::QueueFlags) -> Option<&Queue> {
+    pub fn get_dedicated(&self, flags: vk::QueueFlags) -> Option<Queue> {
         self.queues
             .iter()
             .flatten()
             .find(|q| q.flags == flags)
+            .copied()
             .or_else(|| self.get(flags))
     }
 
-    pub fn graphics(&self) -> Option<&Queue> {
+    pub fn graphics(&self) -> Option<Queue> {
         self.get(vk::QueueFlags::GRAPHICS)
     }
 
-    pub fn compute(&self) -> Option<&Queue> {
+    pub fn compute(&self) -> Option<Queue> {
         self.get_dedicated(vk::QueueFlags::COMPUTE)
     }
 
-    pub fn transfer(&self) -> Option<&Queue> {
+    pub fn transfer(&self) -> Option<Queue> {
         self.get_dedicated(vk::QueueFlags::TRANSFER)
     }
 }

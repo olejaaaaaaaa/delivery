@@ -1,12 +1,15 @@
 use std::error::Error;
 use tracing::level_filters::LevelFilter;
-use winit::event_loop::EventLoop;
+use winit::event_loop::{ControlFlow, EventLoop};
 
 pub mod core;
 pub mod render_context;
 
 mod renderer;
 pub use renderer::*;
+
+mod physics;
+pub use physics::*;
 
 mod bindless;
 pub use bindless::*;
@@ -33,7 +36,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         .init();
 
     let event_loop = EventLoop::new()?;
+    event_loop.set_control_flow(ControlFlow::Poll);
     event_loop.run_app(&mut App::default())?;
-
+    
     Ok(())
 }

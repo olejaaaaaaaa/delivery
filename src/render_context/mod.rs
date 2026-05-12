@@ -20,7 +20,7 @@ pub struct RenderContext {
     /// Window and Swapchain management
     pub(crate) window: RwLock<WindowManager>,
     /// Main Vulkan objects
-    pub(crate) device: GraphicsDevice,
+    pub device: GraphicsDevice,
 }
 
 impl RenderContext {

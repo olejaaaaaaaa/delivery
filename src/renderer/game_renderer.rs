@@ -1,18 +1,20 @@
 use std::sync::Arc;
 use ash::vk;
 use winit::{event::WindowEvent, event_loop::ActiveEventLoop, window::{Window, WindowId}};
-use crate::{Bindless, Mesh, RenderLoop, SimpleRenderer, SimpleUiRenderer, Texture, core::{GpuBuffer, GpuBufferBuilder, TextureVertex, Vertex, VulkanResult}};
+use crate::{Bindless, EguiRenderer, Mesh, PhysicsEngine, RenderLoop, SimpleRenderer, SimpleUiRenderer, Texture, core::{GpuBuffer, GpuBufferBuilder, TextureVertex, Vertex, VulkanResult}};
 
 use super::super::render_context::RenderContext;
 
 
 
 pub struct GameRenderer {
+    phys_engine: PhysicsEngine,
     simple_mesh: Mesh,
     ui_mesh: Mesh,
     texture: Texture,
     bindless: Bindless,
     render_loop: RenderLoop,
+    egui_renderer: EguiRenderer,
     simple_renderer: SimpleRenderer,
     simple_ui_renderer: SimpleUiRenderer,
     ctx: Arc<RenderContext>
@@ -98,10 +100,12 @@ impl GameRenderer {
         };
 
         Ok(Self { 
-            texture,
+            phys_engine: PhysicsEngine::new(),
+            egui_renderer: EguiRenderer::new(&ctx, window),
             render_loop: RenderLoop::new(&ctx),
             simple_ui_renderer: SimpleUiRenderer::new(&ctx, &bindless)?,
             simple_renderer: SimpleRenderer::new(&ctx)?,
+            texture,
             simple_mesh,
             ui_mesh,
             ctx,
@@ -109,7 +113,10 @@ impl GameRenderer {
         })
     }
     
-    pub fn handle_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
+    pub fn handle_event(&mut self, winit_window: &Window, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
+
+        self.egui_renderer.egui_winit.on_window_event(winit_window, &event);
+
         match event {
             WindowEvent::Resized(size) => {
                 let (width, height) = (size.width, size.height);
@@ -150,6 +157,11 @@ impl GameRenderer {
                         );
                     }
 
+                    self.egui_renderer.draw(
+                        cmd, 
+                        winit_window
+                    );
+
                     self.simple_renderer.draw_mesh(
                         device, 
                         window,
@@ -170,6 +182,8 @@ impl GameRenderer {
                         &self.ui_mesh.index_buffer, 
                         self.ui_mesh.index_count
                     );
+
+            
 
                     unsafe {
                         device.cmd_end_render_pass(cmd);
