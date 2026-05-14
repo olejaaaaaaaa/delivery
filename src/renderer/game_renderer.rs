@@ -81,7 +81,7 @@ impl GameRenderer {
         //     index_count: 3
         // };
 
-        let pbr_model = load_gltf(&ctx, &bindless, open_vfs(r"assets\meshes\the_great_drawing_room\scene.gltf")).unwrap();
+        let pbr_model = load_gltf(&ctx, &bindless, open_vfs(r"assets\meshes\flighthelmet\scene.gltf")).unwrap();
 
         let descriptor_pool = DescriptorPoolBuilder::new(&ctx.device)
             .max_sets(30)

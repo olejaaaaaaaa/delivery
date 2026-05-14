@@ -1,3 +1,6 @@
 /target
-/assets/meshes
-/assets/textures
+/assets/meshes/
+/assets/textures/
+*.glb
+*.gltf
+*.bin
