@@ -42,6 +42,7 @@ pub struct ImageBuilder<'a> {
     pub format: Option<vk::Format>,
     pub usage: Option<vk::ImageUsageFlags>,
     pub image_type: Option<vk::ImageType>,
+    pub flags: Option<vk::ImageCreateFlags>
 }
 
 impl<'a> ImageBuilder<'a> {
@@ -54,6 +55,7 @@ impl<'a> ImageBuilder<'a> {
             extent: None,
             format: None,
             usage: None,
+            flags: None,
             image_type: None,
         }
     }
@@ -88,6 +90,11 @@ impl<'a> ImageBuilder<'a> {
         self
     }
 
+    pub fn flags(mut self, flags: vk::ImageCreateFlags) -> Self {
+        self.flags = Some(flags);
+        self
+    }
+
     pub fn build(self) -> VulkanResult<Image> {
         let usage = self.usage.expect("Missing Usage");
         let extent = self.extent.expect("Missing Extent");
@@ -96,8 +103,10 @@ impl<'a> ImageBuilder<'a> {
         let array_layers = self.array_layers.unwrap_or(1);
         let samples = self.samples.unwrap_or(vk::SampleCountFlags::TYPE_1);
         let layout = self.layout.unwrap_or(vk::ImageLayout::UNDEFINED);
+        let flags = self.flags.unwrap_or(vk::ImageCreateFlags::empty());
 
         let create_info = vk::ImageCreateInfo::default()
+            .flags(flags)
             .mip_levels(1)
             .samples(samples)
             .array_layers(array_layers)

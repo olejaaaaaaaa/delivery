@@ -10,6 +10,8 @@ use crate::{core::{CommandPool, CommandPoolBuilder, Queue}, render_context::Rend
 
 
 pub struct EguiRenderer {
+    pub frame_time: f32,
+    pub stats: Vec<(String, f32)>,
     pub queue: Queue,
     pub pool: CommandPool,
     pub egui_ctx: Context,
@@ -46,10 +48,11 @@ impl EguiRenderer {
         ).unwrap();
 
         let queue = ctx.device.queue_pool.graphics().unwrap();
-
         let pool = CommandPoolBuilder::reset(&ctx.device).build().unwrap();
 
         Self { 
+            stats: vec![],
+            frame_time: 0.0,
             pool,
             queue, 
             egui_ctx, 
@@ -78,16 +81,13 @@ impl EguiRenderer {
             pixels_per_point,
             ..
         } = self.egui_ctx.run(raw_input, |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-
-                if ui.button("Нажми меня!").clicked() {
-                    println!("Кнопка нажата!");
-                }
-                
-                if ui.add_sized([100.0, 50.0], egui::Button::new("Большая кнопка")).clicked() {
-                    println!("Большая кнопка нажата!");
-                }
-            });
+            egui::Window::new("Статистика")
+                .resizable(true)        // можно изменять размер
+                .movable(true)          // можно перетаскивать (по умолчанию true)
+                .default_size([200.0, 100.0]) // начальный размер
+                .show(ctx,  |ui| {
+                    ui.label(format!("frame time: {:?}ms", self.frame_time));
+                });
         });
 
         self.egui_winit

@@ -13,6 +13,7 @@ pub struct GraphicsPipelineBuilder<'n> {
     pipeline_layout: Option<vk::PipelineLayout>,
     cache: Option<vk::PipelineCache>,
     render_pass: Option<vk::RenderPass>,
+    depth_stencil: Option<vk::PipelineDepthStencilStateCreateInfo<'n>>,
     descriptor_set_layout: Option<&'n [vk::DescriptorSetLayout]>,
     color_blending_info: Option<vk::PipelineColorBlendStateCreateInfo<'n>>,
     vertex_input_info: Option<vk::PipelineVertexInputStateCreateInfo<'n>>,
@@ -32,6 +33,7 @@ impl<'n> GraphicsPipelineBuilder<'n> {
             device,
             cache: None,
             pipeline_layout: None,
+            depth_stencil: None,
             render_pass: None,
             descriptor_set_layout: None,
             color_blending_info: None,
@@ -118,6 +120,11 @@ impl<'n> GraphicsPipelineBuilder<'n> {
         self
     }
 
+    pub fn depth_stencil(mut self, depth_stencil: vk::PipelineDepthStencilStateCreateInfo<'n>) -> Self {
+        self.depth_stencil= Some(depth_stencil);
+        self
+    }
+
     pub fn input_assembly(
         mut self,
         input_assembly: vk::PipelineInputAssemblyStateCreateInfo<'static>,
@@ -188,14 +195,16 @@ impl<'n> GraphicsPipelineBuilder<'n> {
         let layout = self.pipeline_layout.unwrap();
         let render_pass = self.render_pass.unwrap();
 
-        let depth_stencil_state = vk::PipelineDepthStencilStateCreateInfo::default()
-            .depth_test_enable(false)
-            .depth_write_enable(false)
+        let depth_stencil_state = self.depth_stencil.unwrap_or(
+            vk::PipelineDepthStencilStateCreateInfo::default()
+            .depth_test_enable(true)
+            .depth_write_enable(true)
             .depth_compare_op(vk::CompareOp::LESS)
             .depth_bounds_test_enable(false)
             .min_depth_bounds(0.0)
             .max_depth_bounds(1.0)
-            .stencil_test_enable(false);
+            .stencil_test_enable(false)
+        );
 
         create_info = create_info
             .vertex_input_state(&vertex_input_info)

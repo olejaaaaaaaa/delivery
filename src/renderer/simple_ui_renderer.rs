@@ -1,8 +1,9 @@
 use std::sync::Arc;
 use ash::vk;
+use bytemuck::{Pod, Zeroable};
 use parking_lot::RwLockWriteGuard;
 
-use crate::{Bindless, core::{AttributeDescriptions, BindingDescriptions, GpuBuffer, GraphicsPipeline, GraphicsPipelineBuilder, PipelineLayout, PipelineLayoutBuilder, ShaderBuilder, TextureVertex, Vertex, VulkanResult, load_spv}, render_context::{GraphicsDevice, RenderContext, WindowManager}};
+use crate::{Bindless, Camera, core::{AttributeDescriptions, BindingDescriptions, DescriptorSetLayout, GpuBuffer, GraphicsPipeline, GraphicsPipelineBuilder, PipelineLayout, PipelineLayoutBuilder, ShaderBuilder, TextureVertex, Vertex, VulkanResult, load_spv}, open_vfs, render_context::{GraphicsDevice, RenderContext, WindowManager}};
 
 pub struct SimpleUiRenderer {
     layout: PipelineLayout,
@@ -10,7 +11,7 @@ pub struct SimpleUiRenderer {
 }
 
 impl SimpleUiRenderer {
-    pub fn new(ctx: &Arc<RenderContext>, bindless: &Bindless) -> VulkanResult<Self> {
+    pub fn new(ctx: &Arc<RenderContext>, bindless: &Bindless, cube_set_layout: &DescriptorSetLayout) -> VulkanResult<Self> {
 
         let resolution = ctx.resolution();
         let color_blend = vk::PipelineColorBlendAttachmentState::default()
@@ -22,19 +23,19 @@ impl SimpleUiRenderer {
             )
             .blend_enable(false);
 
-        let bytecode = load_spv(r"assets\shaders\spv\raster_ui_vs.spv").expect("Path not found or SPIR-V bytecode not valid");
+        let bytecode = load_spv(open_vfs("raster_ui_vs.spv")).expect("Path not found or SPIR-V bytecode not valid");
         let vertex = ShaderBuilder::new(&ctx.device)
             .bytecode(&bytecode)
             .build()?;
 
-        let bytecode = load_spv(r"assets\shaders\spv\raster_ui_ps.spv").expect("Path not found or SPIR-V bytecode not valid");
+        let bytecode = load_spv(open_vfs("raster_ui_ps.spv")).expect("Path not found or SPIR-V bytecode not valid");
         let fragment = ShaderBuilder::new(&ctx.device)
             .bytecode(&bytecode)
             .build()?;
 
         let layout = PipelineLayoutBuilder::new(&ctx.device)
             .set_layouts(vec![
-                bindless.set_layout.raw
+                bindless.set_layout.raw, cube_set_layout.raw
             ])
             .push_constant(vec![vk::PushConstantRange::default()
                 .offset(0)
@@ -44,14 +45,19 @@ impl SimpleUiRenderer {
                 )])
             .build()?;
 
-        let binds = TextureVertex::bind_desc();
-        let attrs = TextureVertex::attr_desc();
+        let depth_stencil = vk::PipelineDepthStencilStateCreateInfo::default()
+            .depth_test_enable(false)
+            .depth_write_enable(false)
+            .depth_compare_op(vk::CompareOp::LESS_OR_EQUAL)
+            .depth_bounds_test_enable(false)
+            .min_depth_bounds(0.0)
+            .max_depth_bounds(1.0)
+            .stencil_test_enable(false);
 
-        let vertex_input_info = vk::PipelineVertexInputStateCreateInfo::default()
-            .vertex_binding_descriptions(&binds)
-            .vertex_attribute_descriptions(&attrs);
+        let vertex_input_info = vk::PipelineVertexInputStateCreateInfo::default();
 
         let pipeline = GraphicsPipelineBuilder::new(&ctx.device)
+            .depth_stencil(depth_stencil)
             .vertex_shader(vertex.raw)
             .fragment_shader(fragment.raw)
             .render_pass(ctx.window.read().render_pass.raw)
@@ -105,7 +111,7 @@ impl SimpleUiRenderer {
         })
     }
 
-    pub fn draw_ui(&self, device: &GraphicsDevice, window: &RwLockWriteGuard<'_, WindowManager>, bindless: &Bindless, image_index: u32, cmd: vk::CommandBuffer, vertex_buffer: &GpuBuffer, index_buffer: &GpuBuffer, index_count: u32) {
+    pub fn draw_fullscreen(&self, device: &GraphicsDevice, window: &RwLockWriteGuard<'_, WindowManager>, camera: &Camera, bindless: &Bindless, cube_set: vk::DescriptorSet, cmd: vk::CommandBuffer) {
 
         unsafe {
 
@@ -128,11 +134,34 @@ impl SimpleUiRenderer {
 
             let scissors = vec![scissor];
             device.cmd_set_scissor(cmd, 0, &scissors);
+            device.cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::GRAPHICS, self.layout.raw, 0, &[bindless.set, cube_set], &[]);
 
-            device.cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::GRAPHICS, self.layout.raw, 0, &[bindless.set], &[]);
-            device.cmd_bind_vertex_buffers(cmd, 0, &[vertex_buffer.raw], &[0]);
-            device.cmd_bind_index_buffer(cmd, index_buffer.raw, 0, vk::IndexType::UINT32);
-            device.cmd_draw_indexed(cmd, index_count, 1, 0, 0, 0);
+            #[repr(C)]
+            #[derive(Clone, Copy, Pod, Zeroable)]
+            struct SkyPush {
+                inv_view_proj: [[f32; 4]; 4],
+            }
+
+            let cam_data = camera.last_data;
+            let view = glam::Mat4::from_cols_array_2d(&cam_data.view);
+            let proj = glam::Mat4::from_cols_array_2d(&cam_data.proj);
+
+            let view_no_pos = glam::Mat4::from_mat3(glam::Mat3::from_mat4(view));
+            let inv_view_proj = (proj * view_no_pos).inverse();
+
+            let push = SkyPush {
+                inv_view_proj: inv_view_proj.to_cols_array_2d(),
+            };
+
+            device.cmd_push_constants(
+                cmd,
+                self.layout.raw,
+                vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                0,
+                bytemuck::bytes_of(&push),
+            );
+
+            device.cmd_draw(cmd, 3, 1, 0, 0);
 
         }
     }

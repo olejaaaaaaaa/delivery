@@ -161,4 +161,41 @@ impl Texture {
             image_view
         })
     }
+
+    pub fn cube(ctx: &Arc<RenderContext>, format: vk::Format, width: u32, height: u32) -> VulkanResult<Self> {
+
+        let image = ImageBuilder::new(&ctx.device)
+            .extent(vk::Extent3D {
+                width,
+                height,
+                depth: 1,
+            })
+            .array_layers(6)
+            .format(format)
+            .flags(vk::ImageCreateFlags::CUBE_COMPATIBLE)
+            .image_type(vk::ImageType::TYPE_2D)
+            .usage(vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED)
+            .build()?;
+
+        let image_view = ImageViewBuilder::new(&ctx.device)
+            .components(vk::ComponentMapping::default())
+            .format(format)
+            .image(image.raw)
+            .view_type(vk::ImageViewType::TYPE_2D_ARRAY)
+            .subresource_range(
+                vk::ImageSubresourceRange::default()
+                    .aspect_mask(vk::ImageAspectFlags::COLOR)
+                    .base_array_layer(0)
+                    .layer_count(6)
+                    .base_mip_level(0)
+                    .level_count(1),
+            )
+            .build()?;
+
+        Ok(Self {
+            bindless_index: None,
+            image,
+            image_view
+        })
+    }
 }

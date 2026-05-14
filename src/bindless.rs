@@ -9,11 +9,11 @@ const MAX_SAMPLED_IMAGE: u32 = 16_384;
 const MAX_STORAGE_IMAGES: u32 = 1_024;
 const MAX_SAMPLER: u32 = 5;
 
-pub(crate) struct Bindless {
-    pub(crate) set_layout: DescriptorSetLayout,
-    pub(crate) set: vk::DescriptorSet,
-    pub(crate) pool: DescriptorPool,
-    pub(crate) next_texture: AtomicU32,
+pub struct Bindless {
+    pub set_layout: DescriptorSetLayout,
+    pub set: vk::DescriptorSet,
+    pub pool: DescriptorPool,
+    pub next_texture: AtomicU32,
 }
 
 impl Bindless {
@@ -71,12 +71,9 @@ impl Bindless {
         let sampler_info = vk::SamplerCreateInfo::default()
             .mag_filter(vk::Filter::LINEAR)
             .min_filter(vk::Filter::LINEAR)
-            .address_mode_u(vk::SamplerAddressMode::REPEAT)
-            .address_mode_v(vk::SamplerAddressMode::REPEAT)
-            .address_mode_w(vk::SamplerAddressMode::REPEAT)
-            .mip_lod_bias(0.0)
-            .min_lod(0.0)
-            .max_lod(0.0);
+            .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+            .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+            .address_mode_w(vk::SamplerAddressMode::CLAMP_TO_EDGE);
 
         let sampler = unsafe { ctx.device.create_sampler(&sampler_info, None).unwrap() };
 
@@ -117,7 +114,7 @@ impl Bindless {
             .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
             .image_info(std::slice::from_ref(&image_info));
 
-        println!("New bindless index: {}", index);
+        //println!("New bindless index: {}", index);
 
         unsafe { device.update_descriptor_sets(&[write], &[]) };
     }

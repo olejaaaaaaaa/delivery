@@ -603,6 +603,7 @@ dependencies = [
  "ash",
  "ash-window",
  "bytemuck",
+ "dolly",
  "egui",
  "egui-ash-renderer",
  "egui-winit",
@@ -612,6 +613,7 @@ dependencies = [
  "gltf",
  "gpu-allocator",
  "image",
+ "mint",
  "parking_lot",
  "profiling",
  "rapier3d",
@@ -666,6 +668,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4b8a88685455ed29a21542a33abd9cb6510b6b129abadabdcef0f4c55bc8f61"
 dependencies = [
  "litrs",
+]
+
+[[package]]
+name = "dolly"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1057c2875c640d0d6c961e0bfe5c31d03010d0e72ea96f6c40fffe6b7aebf235"
+dependencies = [
+ "glam 0.28.0",
+ "mint",
 ]
 
 [[package]]
@@ -1163,6 +1175,9 @@ name = "glam"
 version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "779ae4bf7e8421cf91c0b3b64e7e8b40b862fba4d393f59150042de7c4965a94"
+dependencies = [
+ "mint",
+]
 
 [[package]]
 name = "glam"
@@ -1704,6 +1719,12 @@ dependencies = [
  "adler2",
  "simd-adler32",
 ]
+
+[[package]]
+name = "mint"
+version = "0.5.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e53debba6bda7a793e5f99b8dacf19e626084f525f7829104ba9898f367d85ff"
 
 [[package]]
 name = "moxcms"

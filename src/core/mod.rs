@@ -18,6 +18,9 @@ pub use swapchain::*;
 mod command_pool;
 pub use command_pool::*;
 
+mod compute_pipeline;
+pub use compute_pipeline::*;
+
 mod framebuffer;
 pub use framebuffer::*;
 
