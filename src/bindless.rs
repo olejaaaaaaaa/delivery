@@ -114,7 +114,7 @@ impl Bindless {
             .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
             .image_info(std::slice::from_ref(&image_info));
 
-        //println!("New bindless index: {}", index);
+        println!("New bindless index: {}", index);
 
         unsafe { device.update_descriptor_sets(&[write], &[]) };
     }

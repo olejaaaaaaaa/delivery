@@ -48,5 +48,5 @@ float3 dir_to_cube_uv(float3 d) {
 float4 main(PSInput input) : SV_TARGET {
     float3 uvw = dir_to_cube_uv(normalize(input.dir));
     float3 sky_color = sky.SampleLevel(tex_sampler, uvw, 0).rgb;
-    return float4(normalize(input.dir) * 0.5 + 0.5, 1.0);
+    return float4((normalize(input.dir) * 0.5 + 0.5), 1.0);
 }

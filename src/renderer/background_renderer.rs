@@ -3,15 +3,15 @@ use ash::vk;
 use bytemuck::{Pod, Zeroable};
 use parking_lot::RwLockWriteGuard;
 
-use crate::{Bindless, Camera, core::{AttributeDescriptions, BindingDescriptions, DescriptorSetLayout, GpuBuffer, GraphicsPipeline, GraphicsPipelineBuilder, PipelineLayout, PipelineLayoutBuilder, ShaderBuilder, TextureVertex, Vertex, VulkanResult, load_spv}, open_vfs, render_context::{GraphicsDevice, RenderContext, WindowManager}};
+use crate::{Bindless, Camera, SkyRenderer, core::{AttributeDescriptions, BindingDescriptions, DescriptorSetLayout, GpuBuffer, GraphicsPipeline, GraphicsPipelineBuilder, PipelineLayout, PipelineLayoutBuilder, ShaderBuilder, TextureVertex, Vertex, VulkanResult, load_spv}, open_vfs, render_context::{GraphicsDevice, RenderContext, WindowManager}, renderer::render_loop::FrameContext};
 
-pub struct SimpleUiRenderer {
+pub struct BackgroundUiRenderer {
     layout: PipelineLayout,
     pipeline: GraphicsPipeline
 }
 
-impl SimpleUiRenderer {
-    pub fn new(ctx: &Arc<RenderContext>, bindless: &Bindless, cube_set_layout: &DescriptorSetLayout) -> VulkanResult<Self> {
+impl BackgroundUiRenderer {
+    pub fn new(ctx: &Arc<RenderContext>, bindless: &Bindless, sky: &SkyRenderer) -> VulkanResult<Self> {
 
         let resolution = ctx.resolution();
         let color_blend = vk::PipelineColorBlendAttachmentState::default()
@@ -35,7 +35,7 @@ impl SimpleUiRenderer {
 
         let layout = PipelineLayoutBuilder::new(&ctx.device)
             .set_layouts(vec![
-                bindless.set_layout.raw, cube_set_layout.raw
+                bindless.set_layout.raw, sky.sampled_layout.raw
             ])
             .push_constant(vec![vk::PushConstantRange::default()
                 .offset(0)
@@ -111,30 +111,30 @@ impl SimpleUiRenderer {
         })
     }
 
-    pub fn draw_fullscreen(&self, device: &GraphicsDevice, window: &RwLockWriteGuard<'_, WindowManager>, camera: &Camera, bindless: &Bindless, cube_set: vk::DescriptorSet, cmd: vk::CommandBuffer) {
+    pub fn draw_fullscreen(&self, frame: &FrameContext<'_>, camera: &Camera, bindless: &Bindless, sky: &SkyRenderer) {
 
         unsafe {
 
-            device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline.raw);
+            frame.device.cmd_bind_pipeline(frame.cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline.raw);
 
             let viewport = vk::Viewport::default()
                 .x(0.0)
                 .y(0.0)
-                .width(window.resolution.width as f32)
-                .height(window.resolution.height as f32)
+                .width(frame.window.resolution.width as f32)
+                .height(frame.window.resolution.height as f32)
                 .min_depth(0.0)
                 .max_depth(1.0);
 
             let viewports = vec![viewport];
-            device.cmd_set_viewport(cmd, 0, &viewports);
+            frame.device.cmd_set_viewport(frame.cmd, 0, &viewports);
 
             let scissor = vk::Rect2D::default()
                 .offset(vk::Offset2D { x: 0, y: 0 })
-                .extent(window.resolution);
+                .extent(frame.window.resolution);
 
             let scissors = vec![scissor];
-            device.cmd_set_scissor(cmd, 0, &scissors);
-            device.cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::GRAPHICS, self.layout.raw, 0, &[bindless.set, cube_set], &[]);
+            frame.device.cmd_set_scissor(frame.cmd, 0, &scissors);
+            frame.device.cmd_bind_descriptor_sets(frame.cmd, vk::PipelineBindPoint::GRAPHICS, self.layout.raw, 0, &[bindless.set, sky.sampled_cude_set], &[]);
 
             #[repr(C)]
             #[derive(Clone, Copy, Pod, Zeroable)]
@@ -153,15 +153,15 @@ impl SimpleUiRenderer {
                 inv_view_proj: inv_view_proj.to_cols_array_2d(),
             };
 
-            device.cmd_push_constants(
-                cmd,
+            frame.device.cmd_push_constants(
+                frame.cmd,
                 self.layout.raw,
                 vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
                 0,
                 bytemuck::bytes_of(&push),
             );
 
-            device.cmd_draw(cmd, 3, 1, 0, 0);
+            frame.device.cmd_draw(frame.cmd, 3, 1, 0, 0);
 
         }
     }

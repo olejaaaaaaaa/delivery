@@ -3,15 +3,15 @@ use ash::vk::{self, Format};
 use bytemuck::{Pod, Zeroable};
 use parking_lot::RwLockWriteGuard;
 
-use crate::{Texture, core::{AttributeDescriptions, BindingDescriptions, ComputePipeline, ComputePipelineBuilder, DescriptorPool, DescriptorSetLayout, DescriptorSetLayoutBuilder, GpuBuffer, GraphicsPipeline, GraphicsPipelineBuilder, PipelineLayout, PipelineLayoutBuilder, ShaderBuilder, Vertex, VulkanResult, load_spv}, open_vfs, render_context::{GraphicsDevice, RenderContext, WindowManager}};
+use crate::{Texture, core::{AttributeDescriptions, BindingDescriptions, ComputePipeline, ComputePipelineBuilder, DescriptorPool, DescriptorSetLayout, DescriptorSetLayoutBuilder, GpuBuffer, GraphicsPipeline, GraphicsPipelineBuilder, PipelineLayout, PipelineLayoutBuilder, ShaderBuilder, Vertex, VulkanResult, load_spv}, open_vfs, render_context::{GraphicsDevice, RenderContext, WindowManager}, renderer::render_loop::FrameContext};
 
 pub struct SkyRenderer {
-    pub time: Instant,
-    pub sky_rendered_once: bool,
     pipeline: ComputePipeline,
     layout: PipelineLayout,
-    pub comput_layout: DescriptorSetLayout,
-    pub sampeld_layout: DescriptorSetLayout,
+    pub time: Instant,
+    pub sky_rendered_once: bool,
+    pub compute_layout: DescriptorSetLayout,
+    pub sampled_layout: DescriptorSetLayout,
     pub compute_cube_set: vk::DescriptorSet,
     pub sampled_cude_set: vk::DescriptorSet,
     pub cube_map: Texture,
@@ -26,24 +26,24 @@ impl SkyRenderer {
             .build()?;
 
         let compute_set_layout = DescriptorSetLayoutBuilder::new(&ctx.device)
-    .bindings(vec![
-        vk::DescriptorSetLayoutBinding::default()
-            .binding(0)
-            .stage_flags(vk::ShaderStageFlags::COMPUTE)
-            .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
-            .descriptor_count(1),
-    ])
-    .build()?;
+            .bindings(vec![
+                vk::DescriptorSetLayoutBinding::default()
+                    .binding(0)
+                    .stage_flags(vk::ShaderStageFlags::COMPUTE)
+                    .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+                    .descriptor_count(1),
+            ])
+            .build()?;
 
-    let fragment_set_layout = DescriptorSetLayoutBuilder::new(&ctx.device)
-        .bindings(vec![
-            vk::DescriptorSetLayoutBinding::default()
-                .binding(0)
-                .stage_flags(vk::ShaderStageFlags::FRAGMENT)
-                .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
-                .descriptor_count(1),
-        ])
-        .build()?;
+        let fragment_set_layout = DescriptorSetLayoutBuilder::new(&ctx.device)
+            .bindings(vec![
+                vk::DescriptorSetLayoutBinding::default()
+                    .binding(0)
+                    .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+                    .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
+                    .descriptor_count(1),
+            ])
+            .build()?;
 
         let sets = pool.create_descriptor_set(
             &ctx.device, 
@@ -100,25 +100,24 @@ impl SkyRenderer {
             sky_rendered_once: false,
             cube_map,
             pipeline,
-            sampeld_layout: fragment_set_layout,
-            comput_layout: compute_set_layout,
+            sampled_layout: fragment_set_layout,
+            compute_layout: compute_set_layout,
             compute_cube_set: compute_set,
             sampled_cude_set: fragment_set,
             layout
         })
     }
 
-    pub fn dispatch_sky(&self, device: &GraphicsDevice, cmd: vk::CommandBuffer, ) {
+    pub fn dispatch_sky(&self, frame: &FrameContext ) {
         unsafe {
-            device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, self.pipeline.raw);
-
-            device.cmd_bind_descriptor_sets(
-            cmd,
+            frame.device.cmd_bind_pipeline(frame.cmd, vk::PipelineBindPoint::COMPUTE, self.pipeline.raw);
+            frame.device.cmd_bind_descriptor_sets(
+            frame.cmd,
             vk::PipelineBindPoint::COMPUTE,
-            self.layout.raw,
-            0,
-            &[self.compute_cube_set],
-            &[],
+                self.layout.raw,
+                0,
+                &[self.compute_cube_set],
+                &[],
             );
 
             #[repr(C)]
@@ -141,15 +140,15 @@ impl SkyRenderer {
                 ],
             };
 
-            device.cmd_push_constants(
-                cmd,
+            frame.device.cmd_push_constants(
+                frame.cmd,
                 self.layout.raw,
                 vk::ShaderStageFlags::COMPUTE,
                 0,
                 bytemuck::bytes_of(&push),
             );
 
-            device.cmd_dispatch(cmd, 512/8, 512/8, 6);
+            frame.device.cmd_dispatch(frame.cmd, 512/8, 512/8, 6);
         }
     }
 

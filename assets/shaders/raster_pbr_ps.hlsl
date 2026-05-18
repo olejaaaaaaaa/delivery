@@ -9,25 +9,26 @@ static const float PI = 3.14159265359;
 } push;
 
 struct VSOutput {
-    float4 position  : SV_POSITION;
-    float3 world_pos : TEXCOORD0;
-    float3 normal    : TEXCOORD1; 
-    float4 tangent   : TEXCOORD2;  
-    float2 uv        : TEXCOORD3;
+    float4 base_color : COLOR0;  
+    float4 position   : SV_POSITION;
+    float3 world_pos  : TEXCOORD0;
+    float3 normal     : TEXCOORD1; 
+    float4 tangent    : TEXCOORD2;  
+    float2 uv         : TEXCOORD3;
 };
 
 static const float3 LIGHT_POSITIONS[4] = {
-    float3( 10.0,  10.0, 10.0),
-    float3(-10.0,  10.0, 10.0),
-    float3( 10.0, -10.0, 10.0),
-    float3(-10.0, -10.0, 10.0)
+    float3( 100.0,  100.0, 100.0),
+    float3(-100.0,  100.0, 100.0),
+    float3( 100.0, -100.0, 100.0),
+    float3(-100.0, -100.0, 100.0)
 };
 
 static const float3 LIGHT_COLORS[4] = {
-    float3(150.0, 300.0, 300.0),
-    float3(300.0, 150.0, 300.0),
-    float3(150.0, 300.0, 300.0),
-    float3(300.0, 300.0, 150.0)
+    float3(15000.0, 30000.0, 30000.0),
+    float3(30000.0, 15000.0, 30000.0),
+    float3(15000.0, 30000.0, 30000.0),
+    float3(30000.0, 30000.0, 15000.0)
 };
 
 float3 getNormalFromMap(VSOutput input, Texture2D normal_tex) {
@@ -67,7 +68,8 @@ float3 fresnelSchlick(float cosTheta, float3 F0) {
 }
 
 float4 main(VSOutput input) : SV_TARGET {
-    float3 albedo    = pow(Textures[push.tex_idx[0]].Sample(tex_sampler, input.uv).rgb, 2.2);
+    float3 base_color = input.base_color.xyz;
+    float3 albedo    = base_color * Textures[push.tex_idx[0]].Sample(tex_sampler, input.uv).rgb;
     float4 mr_sample = Textures[push.tex_idx[1]].Sample(tex_sampler, input.uv);
     float  ao        = Textures[push.tex_idx[2]].Sample(tex_sampler, input.uv).r;
 

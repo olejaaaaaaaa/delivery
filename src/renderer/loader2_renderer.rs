@@ -1,15 +1,19 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 use ash::vk;
+use bytemuck::{Pod, Zeroable};
 use parking_lot::RwLockWriteGuard;
+use winit::{event::{DeviceEvent, WindowEvent}, event_loop::ActiveEventLoop, window::{Window, WindowId}};
 
-use crate::{core::{AttributeDescriptions, BindingDescriptions, GpuBuffer, GraphicsPipeline, GraphicsPipelineBuilder, PipelineLayout, PipelineLayoutBuilder, ShaderBuilder, Vertex, VulkanResult, load_spv}, render_context::{GraphicsDevice, RenderContext, WindowManager}};
+use crate::{Bindless, Camera, SkyRenderer, Texture, core::{AttributeDescriptions, BindingDescriptions, DescriptorSetLayout, GpuBuffer, GpuBufferBuilder, GraphicsPipeline, GraphicsPipelineBuilder, PipelineLayout, PipelineLayoutBuilder, ShaderBuilder, TextureVertex, Vertex, VulkanResult, load_spv}, open_vfs, render_context::{GraphicsDevice, RenderContext, WindowManager}, renderer::render_loop::FrameContext};
 
-pub struct SimpleRenderer {
+pub struct Loader2Renderer {
+    last_mouse_pos: [f32; 2],
+    time: Instant,
     layout: PipelineLayout,
     pipeline: GraphicsPipeline
 }
 
-impl SimpleRenderer {
+impl Loader2Renderer {
     pub fn new(ctx: &Arc<RenderContext>) -> VulkanResult<Self> {
 
         let resolution = ctx.resolution();
@@ -22,12 +26,12 @@ impl SimpleRenderer {
             )
             .blend_enable(false);
 
-        let bytecode = load_spv(r"assets\shaders\spv\raster_vs.spv").expect("Path not found or SPIR-V bytecode not valid");
+        let bytecode = load_spv(open_vfs("raster_loader2_vs.spv")).expect("Path not found or SPIR-V bytecode not valid");
         let vertex = ShaderBuilder::new(&ctx.device)
             .bytecode(&bytecode)
             .build()?;
 
-        let bytecode = load_spv(r"assets\shaders\spv\raster_ps.spv").expect("Path not found or SPIR-V bytecode not valid");
+        let bytecode = load_spv(open_vfs("raster_loader2_ps.spv")).expect("Path not found or SPIR-V bytecode not valid");
         let fragment = ShaderBuilder::new(&ctx.device)
             .bytecode(&bytecode)
             .build()?;
@@ -42,14 +46,19 @@ impl SimpleRenderer {
                 )])
             .build()?;
 
-        let binds = Vertex::bind_desc();
-        let attrs = Vertex::attr_desc();
+        let depth_stencil = vk::PipelineDepthStencilStateCreateInfo::default()
+            .depth_test_enable(false)
+            .depth_write_enable(false)
+            .depth_compare_op(vk::CompareOp::LESS_OR_EQUAL)
+            .depth_bounds_test_enable(false)
+            .min_depth_bounds(0.0)
+            .max_depth_bounds(1.0)
+            .stencil_test_enable(false);
 
-        let vertex_input_info = vk::PipelineVertexInputStateCreateInfo::default()
-            .vertex_binding_descriptions(&binds)
-            .vertex_attribute_descriptions(&attrs);
+        let vertex_input_info = vk::PipelineVertexInputStateCreateInfo::default();
 
         let pipeline = GraphicsPipelineBuilder::new(&ctx.device)
+            .depth_stencil(depth_stencil)
             .vertex_shader(vertex.raw)
             .fragment_shader(fragment.raw)
             .render_pass(ctx.window.read().render_pass.raw)
@@ -98,39 +107,76 @@ impl SimpleRenderer {
             .build()?;
 
         Ok(Self {
+            last_mouse_pos: [0.0, 0.0],
+            time: Instant::now(),
             pipeline,
             layout
         })
     }
 
-    pub fn draw_mesh(&self, device: &GraphicsDevice, window: &RwLockWriteGuard<'_, WindowManager>, image_index: u32, cmd: vk::CommandBuffer, vertex_buffer: &GpuBuffer, index_buffer: &GpuBuffer, index_count: u32) {
+    pub fn handle_event(&mut self, winit_window: &Window, event: &WindowEvent) {
+        match event {
+            WindowEvent::CursorMoved { device_id, position } => {
+                let width = winit_window.inner_size().width as f32;
+                let height = winit_window.inner_size().height as f32;
+                let x = (position.x as f32 - 0.5 * width) / height;
+                let y = (position.y as f32 - 0.5 * height) / height;
+                self.last_mouse_pos = [x, y];
+                //println!("mouse pos: {:?}", self.last_mouse_pos);
+            }
+            _ => {}
+        }
+    }
+
+    pub fn draw_fullscreen(&self, frame: &FrameContext<'_>, window: &Window) {
 
         unsafe {
 
-            device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline.raw);
+            frame.device.cmd_bind_pipeline(frame.cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline.raw);
 
             let viewport = vk::Viewport::default()
                 .x(0.0)
                 .y(0.0)
-                .width(window.resolution.width as f32)
-                .height(window.resolution.height as f32)
+                .width(frame.window.resolution.width as f32)
+                .height(frame.window.resolution.height as f32)
                 .min_depth(0.0)
                 .max_depth(1.0);
 
             let viewports = vec![viewport];
-            device.cmd_set_viewport(cmd, 0, &viewports);
+            frame.device.cmd_set_viewport(frame.cmd, 0, &viewports);
 
             let scissor = vk::Rect2D::default()
                 .offset(vk::Offset2D { x: 0, y: 0 })
-                .extent(window.resolution);
+                .extent(frame.window.resolution);
 
             let scissors = vec![scissor];
-            device.cmd_set_scissor(cmd, 0, &scissors);
+            frame.device.cmd_set_scissor(frame.cmd, 0, &scissors);
 
-            device.cmd_bind_vertex_buffers(cmd, 0, &[vertex_buffer.raw], &[0]);
-            device.cmd_bind_index_buffer(cmd, index_buffer.raw, 0, vk::IndexType::UINT32);
-            device.cmd_draw_indexed(cmd, index_count, 1, 0, 0, 0);
- 
+            #[repr(C)]
+            #[derive(Clone, Copy, Pod, Zeroable)]
+            struct PushConstants {
+                speed: f32,
+                time: f32,
+                resolution: [f32; 2],
+                mouse_pos: [f32; 2]
+            }
+
+            let mut push = PushConstants::zeroed();
+            push.speed = 0.5;
+            push.time = self.time.elapsed().as_secs_f32();
+            push.resolution = [window.inner_size().width as f32, window.inner_size().height as f32];
+            push.mouse_pos = self.last_mouse_pos;
+
+            frame.device.cmd_push_constants(
+                frame.cmd,
+                self.layout.raw,
+                vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                0,
+                bytemuck::bytes_of(&push),
+            );
+
+            frame.device.cmd_draw(frame.cmd, 3, 1, 0, 0);
+
         }
     }
 

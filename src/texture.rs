@@ -129,15 +129,16 @@ impl Texture {
             ctx.device.end_command_buffer(cmd);
         }
 
-        let transfer_queue = ctx.device.queue_pool.graphics().unwrap();
+        let transfer_queue = ctx.device.queue_pool.transfer().unwrap();
+        let queue = transfer_queue.lock().unwrap();
 
         let binding = [cmd];
         let submit_info = vk::SubmitInfo::default().command_buffers(&binding);
         unsafe {
             let _ = ctx
                 .device
-                .queue_submit(transfer_queue.raw, &[submit_info], vk::Fence::null());
-            let _ = ctx.device.queue_wait_idle(transfer_queue.raw);
+                .queue_submit(queue.raw, &[submit_info], vk::Fence::null());
+            let _ = ctx.device.queue_wait_idle(queue.raw);
         }
 
         let image_view = ImageViewBuilder::new(&ctx.device)

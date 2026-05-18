@@ -4,8 +4,16 @@ use tracing::error;
 use std::sync::Arc;
 use crate::{core::{CommandPool, CommandPoolBuilder, Queue, SwapchainError, VulkanError, VulkanResult}, render_context::{GraphicsDevice, RenderContext, WindowManager}};
 
+
+pub struct FrameContext<'a> {
+    pub device: &'a GraphicsDevice,
+    pub window: &'a RwLockWriteGuard<'a, WindowManager>,
+    pub cmd: vk::CommandBuffer,
+    pub image_index: u32
+}
+
+
 pub struct RenderLoop {
-    queue: Queue,
     pool: CommandPool,
     cmd_buffers: Vec<vk::CommandBuffer>
 }
@@ -22,17 +30,14 @@ impl RenderLoop {
             ctx.frame_in_flight() as u32
         ).unwrap();
 
-        let queue = ctx.device.queue_pool.get_present().unwrap().clone();
-
         Self {
-            queue,
             pool,
             cmd_buffers
         }
     }
 
     pub fn draw<F>(&self, ctx: &Arc<RenderContext>, callback: F) -> VulkanResult<()>
-    where F: FnOnce(&GraphicsDevice, &RwLockWriteGuard<WindowManager>, vk::CommandBuffer, u32) {
+    where F: FnOnce(FrameContext<'_>) {
 
         let device = &ctx.device;
         let mut window_write = ctx.window.write();
@@ -83,7 +88,13 @@ impl RenderLoop {
                     Err(e) => return Err(VulkanError::Unknown(e)),
                 };
 
-            callback(device, &window_write, cmd, image_index);
+
+            callback(FrameContext { 
+                device, 
+                window: &window_write, 
+                cmd, 
+                image_index
+            });
                     
             device
                 .end_command_buffer(cmd)
@@ -102,9 +113,12 @@ impl RenderLoop {
                 .wait_dst_stage_mask(&wait_stages)
                 .command_buffers(&binding)
                 .signal_semaphores(&signal_semaphores);
+
+            let binding = ctx.device.queue_pool.get_wait(vk::QueueFlags::GRAPHICS).unwrap();
+            let queue = binding.lock().unwrap();
      
             device
-                .queue_submit(self.queue.raw, &[submit_info], sync.in_flight_fence.raw)
+                .queue_submit(queue.raw, &[submit_info], sync.in_flight_fence.raw)
                 .map_err(VulkanError::Unknown)?;
 
             let swapchain = [window_write.swapchain.raw];
@@ -118,11 +132,8 @@ impl RenderLoop {
             window_write
                 .swapchain
                 .loader
-                .queue_present(self.queue.raw, &present_info)
-                .map_err(VulkanError::Unknown)?;
-
-            //println!("Image Index: {}, Current Frame: {}", image_index, current_frame);
-            
+                .queue_present(queue.raw, &present_info)
+                .map_err(VulkanError::Unknown)?;            
         }
 
         window_write.current_frame += 1;
