@@ -36,3 +36,5 @@ egui_extras = { version = "0.33", default-features = false, features = ["all_loa
 dolly = "0.6.0"
 
 mint = "0.5.8"
+rodio = { version = "0.22.2", features = ["mp3"] }
+iced_runtime = "0.14.0"

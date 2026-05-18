@@ -1,5 +1,6 @@
 /target
 /assets/meshes/
+/assets/sounds/
 /assets/textures/
 *.glb
 *.gltf

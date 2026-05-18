@@ -1,20 +1,18 @@
-use std::{path::Path, sync::Arc};
+use std::{collections::HashMap, path::Path, sync::Arc};
 use ash::vk;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 use gltf::image::Format;
+use rapier3d::na::Point3;
 
-use crate::{Bindless, Mesh, Texture, core::{GpuBuffer, GpuBufferBuilder, PbrVertex, VulkanResult}, render_context::RenderContext};
+use crate::{Bindless, Mesh, Texture, WorldRenderer, core::{DescriptorPool, DescriptorSetLayoutBuilder, GpuBuffer, GpuBufferBuilder, PbrVertex, VulkanResult}, render_context::RenderContext};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable, Default)]
 pub struct Transform {
     pub model: [[f32; 4]; 4],
-    pub view: [[f32; 4]; 4],
-    pub proj: [[f32; 4]; 4],
     pub normal: [[f32; 4]; 4],
 }
-
 
 #[derive(Clone)]
 pub struct Material {
@@ -24,16 +22,28 @@ pub struct Material {
     pub occlusion_map: u32,
 }
 
-pub struct GltfModel {
+pub struct GltfModelBuilder {
+    pub gltf_image_to_bindless: HashMap<usize, u32>,
+    pub fallback_diffuse: u32,
+    pub fallback_metallic: u32,
+    pub fallback_occlusion: u32,
+    pub fallback_normal: u32,
+    pub physic_vertices: Vec<(Vec<Vec3>, Vec<u32>)>,
     pub meshes: Vec<(Mesh, Material)>,
     pub transforms: Vec<Transform>,
-    pub ssbo: Option<GpuBuffer>,
+    pub textures: Vec<Texture>,
+}
+
+pub struct GltfModel {
+    pub physic_vertices: Vec<(Vec<Vec3>, Vec<u32>)>,
+    pub meshes: Vec<(Mesh, Material)>,
+    pub transforms: Vec<Transform>,
     pub textures: Vec<Texture>,
 }
 
 fn load_gltf_node(
     ctx: &Arc<RenderContext>,
-    model: &mut GltfModel,
+    model: &mut GltfModelBuilder,
     node: gltf::Node<'_>,
     buffers: &[gltf::buffer::Data],
     parent_transform: Mat4,
@@ -74,10 +84,12 @@ fn load_gltf_node(
                 .map(|x| [x[0], x[1], x[2], 0.0])
                 .collect();
 
+            let base_color = i.material().pbr_metallic_roughness().base_color_factor();
+
             let colors: Vec<_> = if let Some(colors) = reader.read_colors(0) {
                 colors.into_rgba_f32().map(|x| x).collect()
             } else {
-                vec![[0.9, 0.6, 0.4, 1.0]; positions.len()]
+                vec![base_color; positions.len()]
             };
 
             let mut vertices = vec![];
@@ -107,44 +119,45 @@ fn load_gltf_node(
 
             index_buffer.upload_data(&indices)?;
 
-            let proj = Mat4::perspective_rh(45.0_f32.to_radians(), 800.0 / 600.0, 0.1, 1000.0);
-            let view = Mat4::look_at_rh(
-                Vec3::new(0.0, 0.0, 1.0),
-                Vec3::new(0.0, -0.12, 0.0),
-                Vec3::NEG_Y,
-            );
-
             let material = i.material();
             let pbr = material.pbr_metallic_roughness();
 
-            let diffuse_index  = pbr.base_color_texture()
-                .map_or(0, |t| model.textures[t.texture().source().index() + 4].bindless_index.unwrap());
+            let diffuse_index = pbr.base_color_texture()
+                .and_then(|t| model.gltf_image_to_bindless.get(&t.texture().source().index()).copied())
+                .unwrap_or(model.fallback_diffuse);
 
             let metallic_roughness_index = pbr.metallic_roughness_texture()
-                .map_or(1, |t| model.textures[t.texture().source().index() + 4].bindless_index.unwrap());
+                .and_then(|t| model.gltf_image_to_bindless.get(&t.texture().source().index()).copied())
+                .unwrap_or(model.fallback_metallic);
 
             let occlusion_index = material.occlusion_texture()
-                .map_or(2, |t| model.textures[t.texture().source().index() + 4].bindless_index.unwrap());
+                .and_then(|t| model.gltf_image_to_bindless.get(&t.texture().source().index()).copied())
+                .unwrap_or(model.fallback_occlusion);
 
             let normal_index = material.normal_texture()
-                .map_or(3, |t| model.textures[t.texture().source().index() + 4].bindless_index.unwrap());
+                .and_then(|t| model.gltf_image_to_bindless.get(&t.texture().source().index()).copied())
+                .unwrap_or(model.fallback_normal);
 
             let model_matrix = node_transform;
-            let view_matrix = view;
-            let proj_matrix = proj;
             let normal_matrix = node_transform.inverse().transpose();
 
             model.transforms.push(Transform {
                 model: model_matrix.to_cols_array_2d(),
-                view: view_matrix.to_cols_array_2d(),
-                proj: proj_matrix.to_cols_array_2d(),
                 normal: normal_matrix.to_cols_array_2d(),
             });
+
+            let phys_vertices = vertices.iter().map(|x| Vec3::new(x.pos[0], x.pos[1], x.pos[2])).collect::<Vec<_>>();
+
+            let index_count = indices.len() as u32;
+
+            model.physic_vertices.push(
+                (phys_vertices, indices)
+            );
 
             model.meshes.push((
                 Mesh { 
                     vertex_buffer,
-                    index_count: indices.len() as u32,
+                    index_count,
                     index_buffer
                 },
                 Material {
@@ -160,117 +173,133 @@ fn load_gltf_node(
     Ok(())
 }
 
-pub fn load_gltf<P: AsRef<Path>>(ctx: &Arc<RenderContext>, bindless: &Bindless, path: P) -> VulkanResult<GltfModel> {
-    let (gltf, buffers, images) = match gltf::import(path.as_ref()) {
-        Ok(result) => result,
-        Err(err) => panic!(
-            "Error load gltf model with path: {:?} with error: {:?}",
-            path.as_ref().as_os_str(),
-            err
-        ),
-    };
+pub fn load_gltf<P: AsRef<Path>>(world: &WorldRenderer, path: P) ->  std::thread::JoinHandle<VulkanResult<GltfModel>> {
 
-    let mut textures = vec![];
+    let path = path.as_ref().to_path_buf();
 
-    // index 0 - diffuse fallback (белый)
-    let pixels = vec![255u8, 255, 255, 255];
-    let mut tex = Texture::new(ctx, vk::Format::R8G8B8A8_SRGB, 1, 1, &pixels)?;
-    let idx = bindless.alloc_texture(&ctx.device, tex.image_view.raw);
-    tex.bindless_index = Some(idx);
-    textures.push(tex); // bindless 0
+    let ctx = world.ctx.clone();
+    let bindless = world.bindless.clone();
 
-    // index 1 - metallic_roughness fallback (не металл, средняя шершавость)
-    let pixels = vec![0u8, 128, 0, 255]; // r=occlusion, g=roughness, b=metallic
-    let mut tex = Texture::new(ctx, vk::Format::R8G8B8A8_SRGB, 1, 1, &pixels)?;
-    let idx = bindless.alloc_texture(&ctx.device, tex.image_view.raw);
-    tex.bindless_index = Some(idx);
-    textures.push(tex); // bindless 1
+    let join_handle: std::thread::JoinHandle<VulkanResult<GltfModel>> = std::thread::spawn(move || {
 
-    // index 2 - occlusion fallback (белый = нет затенения)
-    let pixels = vec![255u8, 255, 255, 255];
-    let mut tex = Texture::new(ctx, vk::Format::R8G8B8A8_SRGB, 1, 1, &pixels)?;
-    let idx = bindless.alloc_texture(&ctx.device, tex.image_view.raw);
-    tex.bindless_index = Some(idx);
-    textures.push(tex); // bindless 2
-
-    // index 3 - normal fallback (flat normal = 128, 128, 255)
-    let pixels = vec![128u8, 128, 255, 255];
-    let mut tex = Texture::new(ctx, vk::Format::R8G8B8A8_SRGB, 1, 1, &pixels)?;
-    let idx = bindless.alloc_texture(&ctx.device, tex.image_view.raw);
-    tex.bindless_index = Some(idx);
-    textures.push(tex); // bindless 3
-
-    for mut image in images {
-        let pixels = std::mem::take(&mut image.pixels);
-        let (width, height) = (image.width, image.height);
-
-        let dynamic_image = match image.format {
-            Format::R8G8B8A8 => image::DynamicImage::ImageRgba8(
-                image::RgbaImage::from_raw(width, height, pixels).unwrap()
-            ),
-            Format::R8G8B8 => image::DynamicImage::ImageRgb8(
-                image::RgbImage::from_raw(width, height, pixels).unwrap()
-            ),
-            Format::R16G16B16A16 => image::DynamicImage::ImageRgba16(
-                image::ImageBuffer::from_raw(width, height, 
-                    pixels.chunks(2).map(|p| u16::from_le_bytes([p[0], p[1]])).collect()
-                ).unwrap()
-            ),
-            Format::R16G16B16 => image::DynamicImage::ImageRgb16(
-                image::ImageBuffer::from_raw(width, height,
-                    pixels.chunks(2).map(|p| u16::from_le_bytes([p[0], p[1]])).collect()
-                ).unwrap()
-            ),
-            Format::R32G32B32A32FLOAT => image::DynamicImage::ImageRgba32F(
-                image::ImageBuffer::from_raw(width, height,
-                    pixels.chunks(4).map(|p| f32::from_le_bytes([p[0], p[1], p[2], p[3]])).collect()
-                ).unwrap()
-            ),
-            Format::R32G32B32FLOAT => image::DynamicImage::ImageRgb32F(
-                image::ImageBuffer::from_raw(width, height,
-                    pixels.chunks(4).map(|p| f32::from_le_bytes([p[0], p[1], p[2], p[3]])).collect()
-                ).unwrap()
-            ),
-            _ => {
-                println!("Skip texture format: {:?}", image.format);
-                continue;
-            }
+        let (gltf, buffers, images) = match gltf::import(path) {
+            Ok(result) => result,
+            Err(err) => panic!("AAAA!"),
         };
 
-        let rgba8 = dynamic_image.to_rgba8();
-        let pixels = rgba8.into_raw();
+        let mut textures = vec![];
 
-        let mut tex = Texture::new(&ctx, vk::Format::R8G8B8A8_SRGB, width, height, &pixels)?;
-        let idx = bindless.alloc_texture(&ctx.device, tex.image_view.raw); // <-- здесь, не в отдельном цикле
+        // index 0 - diffuse fallback (белый)
+        let pixels = vec![255u8, 255, 255, 255];
+        let mut tex = Texture::new(&ctx, vk::Format::R8G8B8A8_SRGB, 1, 1, &pixels).unwrap();
+        let idx = bindless.alloc_texture(&ctx.device, tex.image_view.raw);
         tex.bindless_index = Some(idx);
-        textures.push(tex);
-    }
+        textures.push(tex); // bindless 0
 
-    println!("Texture count: {}", textures.len());
+        // index 1 - metallic_roughness fallback (не металл, средняя шершавость)
+        let pixels = vec![0u8, 128, 0, 255]; // r=occlusion, g=roughness, b=metallic
+        let mut tex = Texture::new(&ctx, vk::Format::R8G8B8A8_SRGB, 1, 1, &pixels).unwrap();
+        let idx = bindless.alloc_texture(&ctx.device, tex.image_view.raw);
+        tex.bindless_index = Some(idx);
+        textures.push(tex); // bindless 1
 
-    let mut gltf_model = GltfModel {
-        meshes: vec![],
-        ssbo: None,
-        transforms: vec![],
-        textures,
-    };
+        // index 2 - occlusion fallback (белый = нет затенения)
+        let pixels = vec![255u8, 255, 255, 255];
+        let mut tex = Texture::new(&ctx, vk::Format::R8G8B8A8_SRGB, 1, 1, &pixels).unwrap();
+        let idx = bindless.alloc_texture(&ctx.device, tex.image_view.raw);
+        tex.bindless_index = Some(idx);
+        textures.push(tex); // bindless 2
 
-    for scene in gltf.scenes() {
-        for node in scene.nodes() {
-            load_gltf_node(ctx, &mut gltf_model, node, &buffers, Mat4::IDENTITY)?;
+        // index 3 - normal fallback (flat normal = 128, 128, 255)
+        let pixels = vec![128u8, 128, 255, 255];
+        let mut tex = Texture::new(&ctx, vk::Format::R8G8B8A8_SRGB, 1, 1, &pixels).unwrap();
+        let idx = bindless.alloc_texture(&ctx.device, tex.image_view.raw);
+        tex.bindless_index = Some(idx);
+        textures.push(tex); // bindless 3
+
+        let mut gltf_image_to_bindless: HashMap<usize, u32> = HashMap::new();
+
+        for (gltf_index, mut image) in images.into_iter().enumerate() {
+            let pixels = std::mem::take(&mut image.pixels);
+            let (width, height) = (image.width, image.height);
+
+            let dynamic_image = match image.format {
+                Format::R8G8B8A8 => image::DynamicImage::ImageRgba8(
+                    image::RgbaImage::from_raw(width, height, pixels).unwrap()
+                ),
+                Format::R8G8B8 => image::DynamicImage::ImageRgb8(
+                    image::RgbImage::from_raw(width, height, pixels).unwrap()
+                ),
+                Format::R8G8 => image::DynamicImage::ImageLuma8(
+                    image::GrayImage::from_raw(width, height, pixels).unwrap()
+                ),
+                Format::R8 => image::DynamicImage::ImageLuma8(
+                    image::GrayImage::from_raw(width, height, pixels).unwrap()
+                ),
+                Format::R16G16B16A16 => image::DynamicImage::ImageRgba16(
+                    image::ImageBuffer::from_raw(width, height, 
+                        pixels.chunks(2).map(|p| u16::from_le_bytes([p[0], p[1]])).collect()
+                    ).unwrap()
+                ),
+                Format::R16G16B16 => image::DynamicImage::ImageRgb16(
+                    image::ImageBuffer::from_raw(width, height,
+                        pixels.chunks(2).map(|p| u16::from_le_bytes([p[0], p[1]])).collect()
+                    ).unwrap()
+                ),
+                Format::R32G32B32A32FLOAT => image::DynamicImage::ImageRgba32F(
+                    image::ImageBuffer::from_raw(width, height,
+                        pixels.chunks(4).map(|p| f32::from_le_bytes([p[0], p[1], p[2], p[3]])).collect()
+                    ).unwrap()
+                ),
+                Format::R32G32B32FLOAT => image::DynamicImage::ImageRgb32F(
+                    image::ImageBuffer::from_raw(width, height,
+                        pixels.chunks(4).map(|p| f32::from_le_bytes([p[0], p[1], p[2], p[3]])).collect()
+                    ).unwrap()
+                ),
+                _ => {
+                    println!("Skip texture format: {:?}", image.format);
+                    continue;
+                }
+            };
+
+            let rgba8 = dynamic_image.to_rgba8();
+            let pixels = rgba8.into_raw();
+
+            let mut tex = Texture::new(&ctx, vk::Format::R8G8B8A8_SRGB, width, height, &pixels).unwrap();
+            let idx = bindless.alloc_texture(&ctx.device, tex.image_view.raw); // <-- здесь, не в отдельном цикле
+            tex.bindless_index = Some(idx);
+
+            gltf_image_to_bindless.insert(gltf_index, idx);
+
+            textures.push(tex);
         }
-    }
+    
 
-    let mut storage_buffer = GpuBufferBuilder::cpu_only(&ctx.device)
-        .size((size_of::<Transform>() * gltf_model.transforms.len()) as u64)
-        .usage(vk::BufferUsageFlags::STORAGE_BUFFER)
-        .build()?;
+        let mut builder = GltfModelBuilder {
+            physic_vertices: vec![],
+            fallback_diffuse: textures[0].bindless_index.unwrap(),
+            fallback_metallic: textures[1].bindless_index.unwrap(),
+            fallback_occlusion: textures[2].bindless_index.unwrap(),
+            fallback_normal: textures[3].bindless_index.unwrap(),
+            gltf_image_to_bindless,
+            meshes: vec![],
+            transforms: vec![],
+            textures,
+        };
 
-    storage_buffer.upload_data(&gltf_model.transforms)?;
-    gltf_model.ssbo = Some(storage_buffer);
-    gltf_model.transforms.clear();
+        for scene in gltf.scenes() {
+            for node in scene.nodes() {
+                load_gltf_node(&ctx, &mut builder, node, &buffers, Mat4::IDENTITY)?;
+            }
+        }
 
-  
+        Ok(GltfModel { 
+            physic_vertices: builder.physic_vertices,
+            meshes: builder.meshes, 
+            transforms: builder.transforms, 
+            textures: builder.textures
+        })
+    });
 
-    Ok(gltf_model)
+    join_handle
 }

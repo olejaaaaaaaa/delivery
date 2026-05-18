@@ -5,13 +5,14 @@ use bytemuck::Zeroable;
 use dolly::{drivers::{Position, Smooth, YawPitch}, rig::CameraRig};
 use glam::Vec3;
 
-use crate::{core::{GpuBuffer, GpuBufferBuilder, VulkanResult}, render_context::RenderContext};
+use crate::{core::{DescriptorPool, DescriptorSetLayoutBuilder, GpuBuffer, GpuBufferBuilder, VulkanResult}, render_context::RenderContext};
 
 use dolly::prelude::*;
 use winit::event::{DeviceEvent, ElementState, KeyEvent, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
 pub struct Camera {
+    pub set: vk::DescriptorSet,
     pub last_data: CameraData,
     rig: CameraRig,
     pub buffer: GpuBuffer,
@@ -36,7 +37,7 @@ pub struct CameraData {
 }
 
 impl Camera {
-    pub fn new(ctx: &Arc<RenderContext>) -> VulkanResult<Self> {
+    pub fn new(ctx: &Arc<RenderContext>, pool: &DescriptorPool) -> VulkanResult<Self> {
         let rig = CameraRig::builder()
             .with(Position::new(mint::Point3::from_slice(&[0.0, 1.0, 0.0])))
             .with(YawPitch::new().yaw_degrees(0.0).pitch_degrees(-15.0))
@@ -48,7 +49,38 @@ impl Camera {
             .usage(vk::BufferUsageFlags::UNIFORM_BUFFER)
             .build()?;
 
+        
+        let set_layout = DescriptorSetLayoutBuilder::new(&ctx.device)
+            .bindings(vec![
+                vk::DescriptorSetLayoutBinding::default()
+                    .stage_flags(vk::ShaderStageFlags::VERTEX)
+                    .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                    .descriptor_count(1)
+            ])
+            .build()?;
+
+        let set = pool.create_descriptor_set(&ctx.device, &[set_layout.raw])?[0];
+
+        unsafe {
+
+            let buffer_info = vk::DescriptorBufferInfo::default()   
+                .buffer(buffer.raw)
+                .offset(0)
+                .range(vk::WHOLE_SIZE);
+
+            let write = vk::WriteDescriptorSet::default()
+                .descriptor_count(1)
+                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                .dst_set(set)
+                .dst_binding(0)
+                .dst_array_element(0)
+                .buffer_info(std::slice::from_ref(&buffer_info));
+
+            ctx.device.update_descriptor_sets(&[write], &[]);
+        }
+
         Ok(Self {
+            set,
             rig,
             buffer,
             last_data: CameraData::zeroed(),

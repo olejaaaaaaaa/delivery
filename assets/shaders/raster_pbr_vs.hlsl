@@ -1,7 +1,5 @@
 struct Transform {
     float4x4 model;
-    float4x4 view;
-    float4x4 proj;
     float4x4 normal;
 };
 
@@ -21,14 +19,15 @@ struct Camera {
 } push;
 
 struct VSInput {
-    float4 position : POSITION;  
-    float4 normal   : NORMAL; 
-    float2 uv       : TEXCOORD0;
-    float4 color    : COLOR0;  
-    float4 tangent  : TANGENT;
+    float4 position    : POSITION;  
+    float4 normal      : NORMAL; 
+    float2 uv          : TEXCOORD0;
+    float4 base_color  : COLOR0;  
+    float4 tangent     : TANGENT;
 };
 
 struct VSOutput {
+    float4 base_color: COLOR0;  
     float4 position  : SV_POSITION;
     float3 world_pos : TEXCOORD0;
     float3 normal    : TEXCOORD1; 
@@ -47,13 +46,7 @@ VSOutput main(VSInput input) {
     output.normal    = mul((float3x3)t.normal, input.normal.xyz);
     output.tangent   = mul(t.model, input.tangent);
     output.uv        = input.uv;
-
-    // float4 world_pos = mul(t.model, input.position);
-    // output.position  = mul(t.proj, mul(t.view, world_pos));
-    // output.world_pos = world_pos.xyz;
-    // output.normal    = mul((float3x3)t.normal, input.normal.xyz);
-    // output.tangent   = mul(t.model, input.tangent);
-    // output.uv        = input.uv;
+    output.base_color = input.base_color;
 
     return output;
 }

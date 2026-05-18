@@ -3,7 +3,7 @@ use ash::vk;
 use bytemuck::{Pod, Zeroable};
 use parking_lot::RwLockWriteGuard;
 
-use crate::{Bindless, GltfModel, core::{AttributeDescriptions, BindingDescriptions, DescriptorPool, DescriptorSetLayout, GpuBuffer, GraphicsPipeline, GraphicsPipelineBuilder, PbrVertex, PipelineLayout, PipelineLayoutBuilder, ShaderBuilder, Vertex, VulkanResult, load_spv}, open_vfs, render_context::{GraphicsDevice, RenderContext, WindowManager}};
+use crate::{Bindless, Camera, GltfModel, Track, core::{AttributeDescriptions, BindingDescriptions, DescriptorPool, DescriptorSetLayout, DescriptorSetLayoutBuilder, GpuBuffer, GraphicsPipeline, GraphicsPipelineBuilder, PbrVertex, PipelineLayout, PipelineLayoutBuilder, ShaderBuilder, Vertex, VulkanResult, load_spv}, open_vfs, render_context::{GraphicsDevice, RenderContext, WindowManager}, renderer::render_loop::FrameContext};
 
 pub struct PbrRenderer {
     layout: PipelineLayout,
@@ -11,7 +11,7 @@ pub struct PbrRenderer {
 }
 
 impl PbrRenderer {
-    pub fn new(ctx: &Arc<RenderContext>, bindless: &Bindless, pool: &DescriptorPool, set_layout: &DescriptorSetLayout, camera_set_layout: &DescriptorSetLayout) -> VulkanResult<Self> {
+    pub fn new(ctx: &Arc<RenderContext>, bindless: &Bindless) -> VulkanResult<Self> {
 
         let resolution = ctx.resolution();
         let color_blend = vk::PipelineColorBlendAttachmentState::default()
@@ -33,8 +33,30 @@ impl PbrRenderer {
             .bytecode(&bytecode)
             .build()?;
 
+        let camera_set_layout = DescriptorSetLayoutBuilder::new(&ctx.device)
+            .bindings(vec![
+                vk::DescriptorSetLayoutBinding::default()
+                    .stage_flags(vk::ShaderStageFlags::VERTEX)
+                    .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                    .descriptor_count(1)
+            ])
+            .build()?;
+
+        let transforms_set_layout = DescriptorSetLayoutBuilder::new(&ctx.device)
+            .bindings(vec![
+                vk::DescriptorSetLayoutBinding::default()
+                    .stage_flags(vk::ShaderStageFlags::VERTEX)
+                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                    .descriptor_count(1)
+            ])
+            .build()?;
+
         let layout = PipelineLayoutBuilder::new(&ctx.device)
-            .set_layouts(vec![bindless.set_layout.raw, set_layout.raw, camera_set_layout.raw])
+            .set_layouts(vec![
+                bindless.set_layout.raw, 
+                transforms_set_layout.raw, 
+                camera_set_layout.raw
+            ])
             .push_constant(vec![vk::PushConstantRange::default()
                 .offset(0)
                 .size(128)
@@ -55,6 +77,14 @@ impl PbrRenderer {
             .fragment_shader(fragment.raw)
             .render_pass(ctx.window.read().render_pass.raw)
             .pipeline_layout(layout.raw)
+            .depth_stencil(
+                vk::PipelineDepthStencilStateCreateInfo::default()
+                    .depth_test_enable(true)
+                    .depth_write_enable(true)
+                    .depth_compare_op(vk::CompareOp::LESS_OR_EQUAL)
+                    .depth_bounds_test_enable(false)
+                    .stencil_test_enable(false),
+            )
             .viewport(vec![vk::Viewport::default()
                 .x(0.0)
                 .y(0.0)
@@ -104,74 +134,77 @@ impl PbrRenderer {
         })
     }
 
-    pub fn draw_mesh(&self, device: &GraphicsDevice, window: &RwLockWriteGuard<'_, WindowManager>, image_index: u32, bindless: &Bindless, set: vk::DescriptorSet, camera_set: vk::DescriptorSet, cmd: vk::CommandBuffer, gltf_mode: &GltfModel) {
+    pub fn draw_mesh(&self, frame: &FrameContext<'_>, bindless: &Bindless, camera: &Camera, track: &Track) {
 
-        unsafe {
+        if let Some(model) = &track.model {
+            unsafe {
 
-            device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline.raw);
+                frame.device.cmd_bind_pipeline(frame.cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline.raw);
 
-            let viewport = vk::Viewport::default()
-                .x(0.0)
-                .y(0.0)
-                .width(window.resolution.width as f32)
-                .height(window.resolution.height as f32)
-                .min_depth(0.0)
-                .max_depth(1.0);
+                let viewport = vk::Viewport::default()
+                    .x(0.0)
+                    .y(0.0)
+                    .width(frame.window.resolution.width as f32)
+                    .height(frame.window.resolution.height as f32)
+                    .min_depth(0.0)
+                    .max_depth(1.0);
 
-            let viewports = vec![viewport];
-            device.cmd_set_viewport(cmd, 0, &viewports);
+                let viewports = vec![viewport];
+                frame.device.cmd_set_viewport(frame.cmd, 0, &viewports);
 
-            let scissor = vk::Rect2D::default()
-                .offset(vk::Offset2D { x: 0, y: 0 })
-                .extent(window.resolution);
+                let scissor = vk::Rect2D::default()
+                    .offset(vk::Offset2D { x: 0, y: 0 })
+                    .extent(frame.window.resolution);
 
-            let scissors = vec![scissor];
-            device.cmd_set_scissor(cmd, 0, &scissors);
+                let scissors = vec![scissor];
+                frame.device.cmd_set_scissor(frame.cmd, 0, &scissors);
 
-            device.cmd_bind_descriptor_sets(
-                cmd, 
-                vk::PipelineBindPoint::GRAPHICS, 
-                self.layout.raw, 
-                0, 
-                &[bindless.set, set, camera_set], 
-                &[]
-            );
-
-            #[repr(C)]
-            #[derive(Clone, Copy, Debug, Pod, Zeroable, Default)]
-            struct Push {
-                tex_idx: [u32; 8],
-                user_data: [f32; 24]
-            }
-
-            let mut push = Push::default();
-
-            for (index, (mesh, material)) in gltf_mode.meshes.iter().enumerate() {
-
-                push.user_data[0] = 0.0;
-                push.user_data[1] = 15.0;
-                push.user_data[2] = 15.0;
-                push.user_data[3] = index as f32;
-
-                push.tex_idx[0] = gltf_mode.textures[material.diffuse_map as usize].bindless_index.unwrap();
-                push.tex_idx[1] = gltf_mode.textures[material.metallic_roughness_map as usize].bindless_index.unwrap();
-                push.tex_idx[2] = gltf_mode.textures[material.occlusion_map as usize].bindless_index.unwrap();
-                push.tex_idx[3] = gltf_mode.textures[material.normal_map as usize].bindless_index.unwrap();
-
-                device.cmd_push_constants(
-                    cmd,
-                    self.layout.raw,
-                    vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
-                    0,
-                    bytemuck::bytes_of(&push),
+                frame.device.cmd_bind_descriptor_sets(
+                    frame.cmd, 
+                    vk::PipelineBindPoint::GRAPHICS, 
+                    self.layout.raw, 
+                    0, 
+                    &[bindless.set, track.set.unwrap(), camera.set], 
+                    &[]
                 );
 
-                device.cmd_bind_vertex_buffers(cmd, 0, &[mesh.vertex_buffer.raw], &[0]);
-                device.cmd_bind_index_buffer(cmd, mesh.index_buffer.raw, 0, vk::IndexType::UINT32);
-                device.cmd_draw_indexed(cmd, mesh.index_count, 1, 0, 0, 0);
-            }
+                #[repr(C)]
+                #[derive(Clone, Copy, Debug, Pod, Zeroable, Default)]
+                struct Push {
+                    tex_idx: [u32; 8],
+                    user_data: [f32; 24]
+                }
 
+                let mut push = Push::default();
+
+                for (index, (mesh, material)) in model.meshes.iter().enumerate() {
+
+                    push.user_data[0] = 0.0;
+                    push.user_data[1] = 15.0;
+                    push.user_data[2] = 15.0;
+                    push.user_data[3] = index as f32;
+
+                    push.tex_idx[0] = material.diffuse_map;
+                    push.tex_idx[1] = material.metallic_roughness_map;
+                    push.tex_idx[2] = material.occlusion_map;
+                    push.tex_idx[3] = material.normal_map;
+
+                    frame.device.cmd_push_constants(
+                        frame.cmd,
+                        self.layout.raw,
+                        vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                        0,
+                        bytemuck::bytes_of(&push),
+                    );
+
+                    frame.device.cmd_bind_vertex_buffers(frame.cmd, 0, &[mesh.vertex_buffer.raw], &[0]);
+                    frame.device.cmd_bind_index_buffer(frame.cmd, mesh.index_buffer.raw, 0, vk::IndexType::UINT32);
+                    frame.device.cmd_draw_indexed(frame.cmd, mesh.index_count, 1, 0, 0, 0);
+                }
+
+            }
         }
+
     }
 
     pub fn destroy(&self, ctx: &Arc<RenderContext>) {

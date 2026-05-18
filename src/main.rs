@@ -5,6 +5,15 @@ use winit::event_loop::{ControlFlow, EventLoop};
 pub mod core;
 pub mod render_context;
 
+mod game_renderer;
+pub use game_renderer::*;
+
+mod car;
+pub use car::*;
+
+mod track;
+pub use track::*;
+
 mod renderer;
 pub use renderer::*;
 
@@ -32,6 +41,10 @@ pub use vfs::*;
 mod app;
 pub use app::*;
 
+mod audio;
+pub use audio::play_music;
+
+
 fn main() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt()
         .with_target(false)
@@ -40,6 +53,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     mount_vfs("./assets/shaders/spv");
     mount_vfs("");
+    mount_vfs("../");
+    mount_vfs("../../");
+    mount_vfs("./assets/sounds");
     mount_vfs("./assets/meshes");
     mount_vfs("./assets/shaders");
     mount_vfs("./assets/textures");

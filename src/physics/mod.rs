@@ -1,5 +1,5 @@
 use glam::Vec3;
-use rapier3d::{dynamics::{CCDSolver, ImpulseJointSet, IntegrationParameters, IslandManager, MultibodyJointSet, RigidBody, RigidBodyBuilder, RigidBodyHandle, RigidBodySet}, geometry::{BroadPhaseBvh, Collider, ColliderBuilder, ColliderHandle, ColliderSet, DefaultBroadPhase, NarrowPhase}, math::Vector, pipeline::PhysicsPipeline};
+use rapier3d::{dynamics::{CCDSolver, GenericJoint, ImpulseJointHandle, ImpulseJointSet, IntegrationParameters, IslandManager, MultibodyJointSet, RigidBody, RigidBodyBuilder, RigidBodyHandle, RigidBodySet}, geometry::{BroadPhaseBvh, Collider, ColliderBuilder, ColliderHandle, ColliderSet, DefaultBroadPhase, NarrowPhase}, math::Vector, pipeline::PhysicsPipeline};
 
 pub struct PhysicsEngine {
     rigid_body_set: RigidBodySet,
@@ -34,6 +34,10 @@ impl PhysicsEngine {
         );
     }
 
+    pub fn create_joint(&mut self, rb1: RigidBodyHandle, rb2: RigidBodyHandle, data: impl Into<GenericJoint>, wake_up: bool) -> ImpulseJointHandle {
+        self.impulse.insert(rb1, rb2, data, wake_up)
+    }
+
     pub fn create_rigid_body(&mut self, body: RigidBody) -> RigidBodyHandle {
         self.rigid_body_set.insert(body)
     }
@@ -44,8 +48,8 @@ impl PhysicsEngine {
 
     pub fn new() -> Self {
 
-        let mut rigid_body_set = RigidBodySet::new();
-        let mut collider_set = ColliderSet::new();
+        let rigid_body_set = RigidBodySet::new();
+        let collider_set = ColliderSet::new();
 
         /* Create other structures necessary for the simulation. */
         let gravity = Vector::new(0.0, -9.81, 0.0);

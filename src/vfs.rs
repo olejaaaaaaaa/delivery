@@ -1,5 +1,4 @@
 use std::path::{Path, PathBuf};
-use std::fs::File;
 use std::sync::{Mutex, OnceLock};
 
 static VFS: OnceLock<Mutex<Vec<PathBuf>>> = OnceLock::new();
@@ -15,7 +14,6 @@ pub fn mount_vfs(path: impl AsRef<Path>) {
 pub fn open_vfs(path: impl AsRef<Path>) -> PathBuf {
     for mount in vfs().lock().unwrap().iter() {
         let full = mount.join(path.as_ref());
-        //println!("path: {:?}", full);
         if full.exists() {
             return full;
         }

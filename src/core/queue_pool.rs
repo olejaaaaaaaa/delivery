@@ -1,3 +1,6 @@
+use std::sync::Arc;
+use std::sync::Mutex;
+
 use ash::vk;
 use tracing::debug;
 
@@ -5,7 +8,7 @@ use crate::core::Surface;
 use crate::core::VulkanError;
 
 pub struct QueuePool {
-    queues: Vec<Vec<Queue>>,
+    queues: Vec<Vec<Arc<Mutex<Queue>>>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -41,52 +44,78 @@ impl QueuePool {
                         .map_err(VulkanError::Unknown)
                         .unwrap()
                 };
-                queue_family.push(Queue {
+                queue_family.push(Arc::new(Mutex::new(Queue {
                     raw: queue,
                     flags: prop.queue_flags,
                     is_present,
                     family_index: family_index as u32,
                     queue_index,
-                });
+                })));
             }
             queues.push(queue_family);
         }
 
-        debug!("Queues: {:#?}", queues);
-
         QueuePool { queues }
     }
 
-    pub fn get(&self, flags: vk::QueueFlags) -> Option<Queue> {
+    pub fn get(&self, flags: vk::QueueFlags) -> Option<Arc<Mutex<Queue>>> {
         self.queues
             .iter()
             .flatten()
-            .find(|q| q.flags.contains(flags))
+            .find(|q| {
+                if let Ok(queue) = q.try_lock() {
+                    return queue.flags.contains(flags);
+                }
+                false
+            })
             .cloned()
     }
 
-    pub fn get_present(&self) -> Option<Queue> {
-        self.queues.iter().flatten().find(|q| q.is_present && q.flags.contains(vk::QueueFlags::GRAPHICS)).cloned()
-    }
-
-    pub fn get_dedicated(&self, flags: vk::QueueFlags) -> Option<Queue> {
+      pub fn get_wait(&self, flags: vk::QueueFlags) -> Option<Arc<Mutex<Queue>>> {
         self.queues
             .iter()
             .flatten()
-            .find(|q| q.flags == flags)
-            .copied()
+            .find(|q| {
+                if let Ok(queue) = q.lock() {
+                    return queue.flags.contains(flags);
+                }
+                false
+            })
+            .cloned()
+    }
+
+    pub fn get_present(&self) -> Option<Arc<Mutex<Queue>>> {
+        self.queues.iter().flatten().find(|q| {
+            if let Ok(queue) = q.try_lock() {
+                return queue.is_present && queue.flags.contains(vk::QueueFlags::GRAPHICS);
+            }
+            false
+        }).cloned()
+    }
+
+    pub fn get_dedicated(&self, flags: vk::QueueFlags) -> Option<Arc<Mutex<Queue>>> {
+        self.queues
+            .iter()
+            .flatten()
+            .find(|q| {
+                if let Ok(queue) = q.try_lock() {
+                    return queue.flags == flags;
+                }
+                false
+            })
+            .cloned()
             .or_else(|| self.get(flags))
     }
 
-    pub fn graphics(&self) -> Option<Queue> {
+    pub fn graphics(&self) -> Option<Arc<Mutex<Queue>>> {
         self.get(vk::QueueFlags::GRAPHICS)
     }
 
-    pub fn compute(&self) -> Option<Queue> {
+    pub fn compute(&self) -> Option<Arc<Mutex<Queue>>> {
         self.get_dedicated(vk::QueueFlags::COMPUTE)
     }
 
-    pub fn transfer(&self) -> Option<Queue> {
+    pub fn transfer(&self) -> Option<Arc<Mutex<Queue>>> {
         self.get_dedicated(vk::QueueFlags::TRANSFER)
     }
 }

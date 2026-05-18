@@ -4,15 +4,14 @@ use ash::vk;
 use egui::{Context, TextureId, ViewportId};
 use egui_ash_renderer::{Options, Renderer};
 use egui_winit::State;
-use winit::window::Window;
+use winit::{event::WindowEvent, window::Window};
 
-use crate::{core::{CommandPool, CommandPoolBuilder, Queue}, render_context::RenderContext};
+use crate::{core::{CommandPool, CommandPoolBuilder, Queue}, render_context::RenderContext, renderer::render_loop::FrameContext};
 
 
 pub struct EguiRenderer {
     pub frame_time: f32,
     pub stats: Vec<(String, f32)>,
-    pub queue: Queue,
     pub pool: CommandPool,
     pub egui_ctx: Context,
     pub egui_winit: State,
@@ -47,14 +46,12 @@ impl EguiRenderer {
             },
         ).unwrap();
 
-        let queue = ctx.device.queue_pool.graphics().unwrap();
         let pool = CommandPoolBuilder::reset(&ctx.device).build().unwrap();
 
         Self { 
             stats: vec![],
             frame_time: 0.0,
             pool,
-            queue, 
             egui_ctx, 
             egui_winit, 
             renderer, 
@@ -62,7 +59,11 @@ impl EguiRenderer {
         }
     }
 
-    pub fn draw(&mut self, cmd: vk::CommandBuffer, window: &Window) {
+    pub fn on_window_event(&mut self, window: &Window, event: &WindowEvent) {
+        let _ = self.egui_winit.on_window_event(window, event);
+    }
+
+    pub fn draw(&mut self, window: &Window, frame: &FrameContext<'_>) {
 
         //Free last frames textures after the previous frame is done rendering
         if let Some(textures) = self.textures_to_free.take() {
@@ -82,25 +83,28 @@ impl EguiRenderer {
             ..
         } = self.egui_ctx.run(raw_input, |ctx| {
             egui::Window::new("Статистика")
-                .resizable(true)        // можно изменять размер
-                .movable(true)          // можно перетаскивать (по умолчанию true)
-                .default_size([200.0, 100.0]) // начальный размер
+                .resizable(true)        
+                .movable(true)          
+                .default_size([200.0, 100.0]) 
                 .show(ctx,  |ui| {
                     ui.label(format!("frame time: {:?}ms", self.frame_time));
                 });
         });
 
         self.egui_winit
-            .handle_platform_output(&window, platform_output);
+            .handle_platform_output(window, platform_output);
 
         if !textures_delta.free.is_empty() {
             self.textures_to_free = Some(textures_delta.free.clone());
         }
 
+        let binding = frame.device.queue_pool.graphics().unwrap();
+        let queue = binding.lock().unwrap();
+
         if !textures_delta.set.is_empty() {
             self.renderer
                 .set_textures(
-                    self.queue.raw,
+                    queue.raw,
                     self.pool.raw,
                     textures_delta.set.as_slice(),
                 )
@@ -112,8 +116,11 @@ impl EguiRenderer {
         let resolution = window.inner_size();
 
         self.renderer.cmd_draw(
-            cmd, 
-            ash::vk::Extent2D { width: resolution.width, height: resolution.height }, 
+            frame.cmd, 
+            ash::vk::Extent2D { 
+                width: resolution.width, 
+                height: resolution.height 
+            }, 
             pixels_per_point, 
             &primitives
         ).unwrap();

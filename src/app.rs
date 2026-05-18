@@ -1,4 +1,4 @@
-use winit::{application::ApplicationHandler, dpi::PhysicalSize, event::WindowEvent, event_loop::{self, ActiveEventLoop}, window::{Fullscreen, Window, WindowId}};
+use winit::{application::ApplicationHandler, dpi::PhysicalSize, event::WindowEvent, event_loop::{self, ActiveEventLoop}, window::{CursorGrabMode, Fullscreen, Window, WindowId}};
 
 use crate::GameRenderer;
 
@@ -17,7 +17,7 @@ impl ApplicationHandler for App {
             _ => {
                 let game = self.game.as_mut().unwrap();
                 if let Some(window) = self.window.as_ref() {
-                    game.handle_event(window, event_loop, id, event);
+                    game.handle_winit_event(window, event_loop, id, event);
                 }
             },
         }
@@ -36,8 +36,8 @@ impl ApplicationHandler for App {
         event: winit::event::DeviceEvent,
     )
     {
-        if let Some(window) = self.window.as_ref() {
-            self.game.as_mut().unwrap().camera.handle_device_event(&event);
+        if let Some(game) = &mut self.game {
+            game.handle_winit_device_event(event_loop, device_id, event);
         }
     }
 
@@ -51,12 +51,19 @@ impl ApplicationHandler for App {
             .create_window(window_attributes)
             .expect("Error create window");
 
+        window.set_cursor_visible(false);
+
         // let monitor = window.current_monitor().unwrap();
-        // let video_mode = monitor.video_modes().next().unwrap();
 
-        // window.set_fullscreen(Some(Fullscreen::Exclusive(video_mode)));
+        // let video_mode = monitor
+        //     .video_modes()
+        //     .filter(|m| m.refresh_rate_millihertz() >= 59_000)
+        //     .max_by_key(|m| (m.size().width, m.refresh_rate_millihertz()))
+        //     .unwrap();
 
-        let game_renderer = GameRenderer::new(&window).unwrap();
+        //window.set_fullscreen(Some(Fullscreen::Exclusive(video_mode)));
+
+        let game_renderer = GameRenderer::new(&window);
         self.game = Some(game_renderer);
         self.window = Some(window);
     }
