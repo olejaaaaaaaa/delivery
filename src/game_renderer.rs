@@ -50,23 +50,7 @@ impl GameRenderer {
                 let dt = self.global_time.elapsed().as_secs_f32();
                 self.global_time = Instant::now();
 
-                self.track.load_if_finish(&self.world, &mut self.physics);
-                self.car.load_if_finish(&self.world, &mut self.physics);
-
-                if self.track.model.is_some() {
-
-                    let t = std::time::Instant::now();
-                    self.car.sync_transforms(&self.physics);
-                    //println!("sync: {}ms", t.elapsed().as_millis());
-
-                    let t = std::time::Instant::now();
-                    self.physics.update(dt);
-                    //println!("physics: {}ms", t.elapsed().as_millis());
-                    
-                    
-                }
-
-                if let Some(car) = &self.car.car_body {
+               if let Some(_) = &self.car.car_body {
                     let camera = &mut self.world.camera;
                     camera.rig.driver_mut::<Position>().position = Point3 {
                         x: self.car.position.x,
@@ -87,6 +71,22 @@ impl GameRenderer {
                         z: (self.car.position.z + Vec3::Y.z),
                     };
                 }
+
+                if self.track.model.is_some() {
+
+                    let t = std::time::Instant::now();
+                    self.physics.update(dt);
+                    //println!("physics: {}ms", t.elapsed().as_millis());
+
+                    let t = std::time::Instant::now();
+                    self.car.sync_transforms(&self.physics);
+                    //println!("sync: {}ms", t.elapsed().as_millis());
+                }
+
+                self.track.load_if_finish(&self.world, &mut self.physics);
+                self.car.load_if_finish(&self.world, &mut self.physics);
+
+                
                 
                 let t = std::time::Instant::now();
                 self.world.draw(winit_window, &mut self.car, &self.track);

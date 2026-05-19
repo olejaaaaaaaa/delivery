@@ -46,7 +46,8 @@ float3 dir_to_cube_uv(float3 d) {
 // }
 
 float4 main(PSInput input) : SV_TARGET {
-    float3 uvw = dir_to_cube_uv(normalize(input.dir));
-    float3 sky_color = sky.SampleLevel(tex_sampler, uvw, 0).rgb;
-    return float4((normalize(input.dir) * 0.5 + 0.5), 1.0);
+    float3 dir = normalize(input.dir);
+    float t = dir.y * 0.5 + 0.5;
+    float3 color = lerp(float3(0.3, 2.0, 1.0), float3(1.0, 1.0, 1.0), t);
+    return float4(color, 1.0);
 }

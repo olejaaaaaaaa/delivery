@@ -135,7 +135,7 @@ impl WorldRenderer {
                 );
             }
 
-            if track.model.is_none() || !self.is_run {
+            if track.model.is_none() || self.is_run {
                 //println!("One");
                 self.loader2_renderer.draw_fullscreen(&frame, winit_window);
                 self.loader_renderer.draw_fullscreen(

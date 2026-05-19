@@ -17,7 +17,7 @@ pub struct LoaderRenderer {
 impl LoaderRenderer {
     pub fn new(ctx: &Arc<RenderContext>, bindless: &Bindless) -> VulkanResult<Self> {
 
-        let texture = image::open(open_vfs(r"assets\textures\text-removebg-preview.png")).unwrap();
+        let texture = image::open(open_vfs(r"assets\textures\text.png")).unwrap();
         let rgba8 = texture.as_rgba8().unwrap();
         let (width, height) = (rgba8.width(), rgba8.height());
         let pixels = rgba8.clone().into_raw();
@@ -52,6 +52,16 @@ impl LoaderRenderer {
             TextureVertex { pos: [ scale_x + offset_x, -scale_y + offset_y, 0.0], uv: [1.0, 0.0] },
             TextureVertex { pos: [-scale_x + offset_x, -scale_y + offset_y, 0.0], uv: [0.0, 0.0] },
         ];
+
+        // let tex_mesh = vec![
+        //     TextureVertex { pos: [-1.0,  1.0, 0.0], uv: [0.0, 1.0] },  // верхний левый
+        //     TextureVertex { pos: [ 1.0,  1.0, 0.0], uv: [1.0, 1.0] },  // верхний правый
+        //     TextureVertex { pos: [-1.0, -1.0, 0.0], uv: [0.0, 0.0] },  // нижний левый
+
+        //     TextureVertex { pos: [ 1.0,  1.0, 0.0], uv: [1.0, 1.0] },  // верхний правый
+        //     TextureVertex { pos: [ 1.0, -1.0, 0.0], uv: [1.0, 0.0] },  // нижний правый
+        //     TextureVertex { pos: [-1.0, -1.0, 0.0], uv: [0.0, 0.0] },  // нижний левый
+        // ];
 
         let mut text_mesh = GpuBufferBuilder::cpu_only(&ctx.device)
             .size((size_of::<TextureVertex>() * tex_mesh.len()) as u64)
