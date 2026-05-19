@@ -1,24 +1,33 @@
+use std::time::Instant;
+
+use dolly::drivers::{LookAt, Position, Rotation};
+use glam::Vec3;
+use mint::Point3;
 use winit::{event::{KeyEvent, WindowEvent}, event_loop::ActiveEventLoop, keyboard::{KeyCode, PhysicalKey}, window::{CursorGrabMode, Window, WindowId}};
 use crate::{Car, PhysicsEngine, Track, WorldRenderer, open_vfs, play_music};
 
 pub struct GameRenderer {
+    global_time: Instant,
     world: WorldRenderer,
-    //car: Car,
+    car: Car,
     track: Track,
     physics: PhysicsEngine,
 }
 
 impl GameRenderer {
     pub fn new(window: &Window) -> Self {
+
+
         play_music(open_vfs(r"assets\sounds\backgroud.mp3"));
         let world = WorldRenderer::new(window).expect("Error create World Renderer");
         let mut physics = PhysicsEngine::new();
 
         let track = Track::new(&world).unwrap();
-        //let car = Car::new(&world, &mut physics).unwrap();
+        let car = Car::new(&world, &mut physics).unwrap();
 
         Self { 
-            //car,
+            global_time: Instant::now(),
+            car,
             track,
             world, 
             physics 
@@ -37,9 +46,51 @@ impl GameRenderer {
                 self.world.resize(width, height);
             },
             WindowEvent::RedrawRequested => {
-                self.physics.update();
+
+                let dt = self.global_time.elapsed().as_secs_f32();
+                self.global_time = Instant::now();
+
                 self.track.load_if_finish(&self.world, &mut self.physics);
-                self.world.draw(winit_window, &self.track);
+                self.car.load_if_finish(&self.world, &mut self.physics);
+
+                if self.track.model.is_some() {
+
+                    let t = std::time::Instant::now();
+                    self.car.sync_transforms(&self.physics);
+                    //println!("sync: {}ms", t.elapsed().as_millis());
+
+                    let t = std::time::Instant::now();
+                    self.physics.update(dt);
+                    //println!("physics: {}ms", t.elapsed().as_millis());
+                    
+                    
+                }
+
+                if let Some(car) = &self.car.car_body {
+                    let camera = &mut self.world.camera;
+                    camera.rig.driver_mut::<Position>().position = Point3 {
+                        x: self.car.position.x,
+                        y: self.car.position.y,
+                        z: self.car.position.z,
+                    };
+                    camera.rig.driver_mut::<Rotation>().rotation = mint::Quaternion {
+                        v: mint::Vector3 {
+                            x: self.car.rotation.x,
+                            y: self.car.rotation.y,
+                            z: self.car.rotation.z,
+                        },
+                        s: self.car.rotation.w,
+                    };
+                    camera.rig.driver_mut::<LookAt>().target = Point3 {
+                        x: (self.car.position.x + Vec3::Y.x),
+                        y: (self.car.position.y + Vec3::Y.y),
+                        z: (self.car.position.z + Vec3::Y.z),
+                    };
+                }
+                
+                let t = std::time::Instant::now();
+                self.world.draw(winit_window, &mut self.car, &self.track);
+                //println!("draw: {}ms", t.elapsed().as_millis());
             }
             _ => {}
         }

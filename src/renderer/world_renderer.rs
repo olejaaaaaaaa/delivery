@@ -9,6 +9,7 @@ use super::super::render_context::RenderContext;
 
 pub struct WorldRenderer {
     pub(crate) global_time: Instant,
+    pub(crate) is_run: bool,
     pub(crate) debug_ui_enable: bool,
     pub(crate) camera: Camera,
     pub(crate) last_time: std::time::Instant,
@@ -31,13 +32,13 @@ impl WorldRenderer {
         let bindless = Bindless::new(&ctx)?;
 
         let pool = DescriptorPoolBuilder::new(&ctx.device)
-            .max_sets(30)
+            .max_sets(50)
             .pool_sizes(&[
                 vk::DescriptorPoolSize::default()
                     .descriptor_count(5)
                     .ty(vk::DescriptorType::SAMPLED_IMAGE),
                 vk::DescriptorPoolSize::default()
-                    .descriptor_count(5)
+                    .descriptor_count(25)
                     .ty(vk::DescriptorType::STORAGE_BUFFER),
                 vk::DescriptorPoolSize::default()
                     .descriptor_count(5)
@@ -52,8 +53,9 @@ impl WorldRenderer {
         let back_renderer = BackgroundUiRenderer::new(&ctx, &bindless, &sky_renderer)?;
 
         Ok(Self { 
+            is_run: false,
             global_time: Instant::now(),
-            debug_ui_enable: false,
+            debug_ui_enable: true,
             last_time: Instant::now(),
             loader2_renderer: Loader2Renderer::new(&ctx)?,
             loader_renderer: LoaderRenderer::new(&ctx, &bindless)?,
@@ -73,7 +75,7 @@ impl WorldRenderer {
         self.ctx.resize(width, height).expect("Error resize window");
     }
 
-    pub fn draw(&mut self, winit_window: &Window, track: &Track) {
+    pub fn draw(&mut self, winit_window: &Window, car: &mut Car, track: &Track) {
         let dt = self.last_time.elapsed().as_secs_f32();
         self.egui_renderer.frame_time = self.last_time.elapsed().as_millis() as f32;
         self.last_time = std::time::Instant::now();
@@ -133,8 +135,8 @@ impl WorldRenderer {
                 );
             }
 
-            if track.model.is_none() {
-                println!("One");
+            if track.model.is_none() || !self.is_run {
+                //println!("One");
                 self.loader2_renderer.draw_fullscreen(&frame, winit_window);
                 self.loader_renderer.draw_fullscreen(
                     &frame, 
@@ -155,9 +157,12 @@ impl WorldRenderer {
                     &frame,
                     &self.bindless, 
                     &self.camera,
-                    &track
+                    car,
+                    track
                 );
             }
+
+            car.last_image = frame.image_index;
             
             if self.debug_ui_enable {
                 self.egui_renderer.draw(winit_window, &frame);
@@ -185,6 +190,8 @@ impl WorldRenderer {
             WindowEvent::KeyboardInput { device_id, event, is_synthetic } => {
                 if event.physical_key == PhysicalKey::Code(KeyCode::Tab) && event.state.is_pressed() {
                     self.debug_ui_enable = !self.debug_ui_enable;
+                } else if event.physical_key == PhysicalKey::Code(KeyCode::KeyE) && event.state.is_pressed() {
+                    self.is_run = true;
                 }
             }
             _ => {},

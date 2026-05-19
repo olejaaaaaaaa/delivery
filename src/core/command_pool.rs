@@ -43,6 +43,7 @@ impl CommandPool {
 
 pub struct CommandPoolBuilder<'a> {
     device: &'a Device,
+    index: Option<u32>,
     flags: vk::CommandPoolCreateFlags,
 }
 
@@ -50,12 +51,21 @@ impl<'a> CommandPoolBuilder<'a> {
     pub fn reset(device: &'a Device) -> Self {
         Self {
             device,
+            index: None,
             flags: vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER,
         }
     }
 
+    pub fn family(mut self, index: u32) -> Self {
+        self.index = Some(index);
+        self
+    }
+
     pub fn build(self) -> VulkanResult<CommandPool> {
-        let create_info = vk::CommandPoolCreateInfo::default().flags(self.flags);
+
+        let create_info = vk::CommandPoolCreateInfo::default()
+            .queue_family_index(self.index.unwrap_or(0))
+            .flags(self.flags);
 
         let pool = unsafe {
             profiling::scope!("vkCreateCommandPool");

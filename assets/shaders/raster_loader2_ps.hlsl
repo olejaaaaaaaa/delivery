@@ -29,7 +29,8 @@ float4 main(PSInput input) : SV_TARGET {
     for (float i = 0.0; i <= 5.0; i += 1.0) {
         float t = i / 5.0;
         float2 warped = uv;
-        warped.y += (push.mouse_pos.y - uv.y) * 0.9 * S(1.0, 0.0, dist);
+       // warped.y += (push.mouse_pos.y - uv.y) * 0.9 * S(1.0, 0.0, dist);
+        warped.x += (push.mouse_pos.x - uv.x) * 0.9 * S(1.0, 0.0, dist);
         O += Line(warped, 1.0 + t, 4.0 + t, float3(0.1 + t * 0.3, 0.0, 0.4 + t * 0.6));
     }
     float glow = (0.2 / (dist + 0.01));

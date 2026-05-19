@@ -105,9 +105,9 @@ float4 main(VSOutput input) : SV_TARGET {
         Lo += (kD * albedo / PI + specular) * radiance * NdotL;
     }
 
-    float3 ambient = float3(0.003, 0.003, 0.003) * albedo * ao;
+    float3 ambient = float3(0.03, 0.03, 0.03) * albedo * ao;
     float3 color   = ambient + Lo;
-    color = color / (color + float3(1.0, 1.0, 1.0));
+    color = (color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14);
     color = pow(color, 1.0 / 2.2);
 
     return float4(color, 1.0);

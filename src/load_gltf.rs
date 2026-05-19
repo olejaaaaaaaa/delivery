@@ -1,7 +1,7 @@
 use std::{collections::HashMap, path::Path, sync::Arc};
 use ash::vk;
 use bytemuck::{Pod, Zeroable};
-use glam::{Mat4, Vec3};
+use glam::{Mat4, Vec3, Vec4};
 use gltf::image::Format;
 use rapier3d::na::Point3;
 
@@ -146,7 +146,12 @@ fn load_gltf_node(
                 normal: normal_matrix.to_cols_array_2d(),
             });
 
-            let phys_vertices = vertices.iter().map(|x| Vec3::new(x.pos[0], x.pos[1], x.pos[2])).collect::<Vec<_>>();
+            let phys_vertices = vertices.iter()
+                .map(|x| {
+                    let p = node_transform * Vec4::new(x.pos[0], x.pos[1], x.pos[2], 1.0);
+                    Vec3::new(p.x, p.y, p.z)
+                })
+                .collect::<Vec<_>>();
 
             let index_count = indices.len() as u32;
 
@@ -265,7 +270,7 @@ pub fn load_gltf<P: AsRef<Path>>(world: &WorldRenderer, path: P) ->  std::thread
             let rgba8 = dynamic_image.to_rgba8();
             let pixels = rgba8.into_raw();
 
-            let mut tex = Texture::new(&ctx, vk::Format::R8G8B8A8_SRGB, width, height, &pixels).unwrap();
+            let mut tex = Texture::new(&ctx, vk::Format::R8G8B8A8_UNORM, width, height, &pixels).unwrap();
             let idx = bindless.alloc_texture(&ctx.device, tex.image_view.raw); // <-- здесь, не в отдельном цикле
             tex.bindless_index = Some(idx);
 

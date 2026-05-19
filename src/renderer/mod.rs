@@ -21,3 +21,6 @@ pub use world_renderer::*;
 
 mod pbr_renderer;
 pub use pbr_renderer::*;
+
+mod car_renderer;
+pub use car_renderer::*;

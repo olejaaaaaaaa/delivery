@@ -4,6 +4,7 @@ use ash::vk;
 use bytemuck::Zeroable;
 use dolly::{drivers::{Position, Smooth, YawPitch}, rig::CameraRig};
 use glam::Vec3;
+use mint::Vector3;
 
 use crate::{core::{DescriptorPool, DescriptorSetLayoutBuilder, GpuBuffer, GpuBufferBuilder, VulkanResult}, render_context::RenderContext};
 
@@ -14,7 +15,7 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 pub struct Camera {
     pub set: vk::DescriptorSet,
     pub last_data: CameraData,
-    rig: CameraRig,
+    pub rig: CameraRig,
     pub buffer: GpuBuffer,
     move_speed: f32,
     mouse_sensitivity: f32,
@@ -39,9 +40,20 @@ pub struct CameraData {
 impl Camera {
     pub fn new(ctx: &Arc<RenderContext>, pool: &DescriptorPool) -> VulkanResult<Self> {
         let rig = CameraRig::builder()
-            .with(Position::new(mint::Point3::from_slice(&[0.0, 1.0, 0.0])))
-            .with(YawPitch::new().yaw_degrees(0.0).pitch_degrees(-15.0))
-            .with(Smooth::new_position_rotation(0.5, 0.5))
+            .with(Position::new(mint::Point3 { x: 0.0, y: 0.0, z: 0.0 }))
+            .with(Rotation::new(mint::Quaternion { 
+                v: Vector3::from_slice(&[0.0, 0.0, 0.0]),
+                s: 0.0
+            }))
+            .with(YawPitch::new().yaw_degrees(45.0).pitch_degrees(-30.0))
+            .with(Smooth::new_position(1.25).predictive(true))
+            .with(Arm::new(mint::Point3 { x: 0.0, y: 1.5, z: -6.5 }))
+            .with(Smooth::new_position(2.5))
+            .with(
+                LookAt::new(mint::Point3 { x: 0.0, y: 1.0, z: 0.0 })
+                    .tracking_smoothness(1.25)
+                    .tracking_predictive(true),
+            )
             .build();
 
         let buffer = GpuBufferBuilder::cpu_only(&ctx.device)

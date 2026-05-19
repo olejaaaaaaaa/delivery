@@ -15,7 +15,7 @@ pub struct Track {
 
 impl Track {
     pub fn new(world: &WorldRenderer) -> VulkanResult<Self> {
-        let model = load_gltf(world ,open_vfs(r"assets\meshes\pica_pica_-_mini_diorama_01\scene.gltf"));
+        let model = load_gltf(world ,open_vfs(r"C:\Users\Oleja\Desktop\cornell-mcray\assets\track\track.gltf"));
 
         Ok(Self {
             set: None,

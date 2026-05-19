@@ -98,7 +98,7 @@ impl EguiRenderer {
             self.textures_to_free = Some(textures_delta.free.clone());
         }
 
-        let binding = frame.device.queue_pool.graphics().unwrap();
+        let binding = frame.device.queue_pool.get_wait(vk::QueueFlags::GRAPHICS).unwrap();
         let queue = binding.lock().unwrap();
 
         if !textures_delta.set.is_empty() {

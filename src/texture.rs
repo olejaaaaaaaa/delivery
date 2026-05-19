@@ -34,7 +34,10 @@ impl Texture {
 
         staging_buffer.upload_data(pixels)?;
 
-        let pool = CommandPoolBuilder::reset(&ctx.device).build()?;
+        let transfer_queue = ctx.device.queue_pool.transfer().unwrap();
+        let queue = transfer_queue.lock().unwrap();
+
+        let pool = CommandPoolBuilder::reset(&ctx.device).family(queue.family_index).build()?;
         let cmd = pool.allocate_cmd_buffers(&ctx.device, vk::CommandBufferLevel::PRIMARY, 1)?[0];
 
         let barrier = vk::ImageMemoryBarrier::default()
@@ -117,7 +120,7 @@ impl Texture {
             ctx.device.cmd_pipeline_barrier(
                 cmd,
                 vk::PipelineStageFlags::TRANSFER,
-                vk::PipelineStageFlags::FRAGMENT_SHADER,
+                vk::PipelineStageFlags::BOTTOM_OF_PIPE,
                 vk::DependencyFlags::empty(),
                 &[],
                 &[],
@@ -128,9 +131,6 @@ impl Texture {
         unsafe {
             ctx.device.end_command_buffer(cmd);
         }
-
-        let transfer_queue = ctx.device.queue_pool.transfer().unwrap();
-        let queue = transfer_queue.lock().unwrap();
 
         let binding = [cmd];
         let submit_info = vk::SubmitInfo::default().command_buffers(&binding);

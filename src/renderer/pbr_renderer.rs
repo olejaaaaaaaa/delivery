@@ -3,7 +3,7 @@ use ash::vk;
 use bytemuck::{Pod, Zeroable};
 use parking_lot::RwLockWriteGuard;
 
-use crate::{Bindless, Camera, GltfModel, Track, core::{AttributeDescriptions, BindingDescriptions, DescriptorPool, DescriptorSetLayout, DescriptorSetLayoutBuilder, GpuBuffer, GraphicsPipeline, GraphicsPipelineBuilder, PbrVertex, PipelineLayout, PipelineLayoutBuilder, ShaderBuilder, Vertex, VulkanResult, load_spv}, open_vfs, render_context::{GraphicsDevice, RenderContext, WindowManager}, renderer::render_loop::FrameContext};
+use crate::{Bindless, Camera, Car, GltfModel, Track, core::{AttributeDescriptions, BindingDescriptions, DescriptorPool, DescriptorSetLayout, DescriptorSetLayoutBuilder, GpuBuffer, GraphicsPipeline, GraphicsPipelineBuilder, PbrVertex, PipelineLayout, PipelineLayoutBuilder, ShaderBuilder, Vertex, VulkanResult, load_spv}, open_vfs, render_context::{GraphicsDevice, RenderContext, WindowManager}, renderer::render_loop::FrameContext};
 
 pub struct PbrRenderer {
     layout: PipelineLayout,
@@ -134,9 +134,10 @@ impl PbrRenderer {
         })
     }
 
-    pub fn draw_mesh(&self, frame: &FrameContext<'_>, bindless: &Bindless, camera: &Camera, track: &Track) {
+    pub fn draw_mesh(&self, frame: &FrameContext<'_>, bindless: &Bindless, camera: &Camera, car: &Car, track: &Track) {
 
         if let Some(model) = &track.model {
+
             unsafe {
 
                 frame.device.cmd_bind_pipeline(frame.cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline.raw);
@@ -202,6 +203,44 @@ impl PbrRenderer {
                     frame.device.cmd_draw_indexed(frame.cmd, mesh.index_count, 1, 0, 0, 0);
                 }
 
+                if let Some(model) = &car.car_body {
+                         
+                    frame.device.cmd_bind_descriptor_sets(
+                        frame.cmd, 
+                        vk::PipelineBindPoint::GRAPHICS, 
+                        self.layout.raw, 
+                        0, 
+                        &[bindless.set, car.car_set.as_ref().unwrap()[frame.image_index as usize], camera.set], 
+                        &[]
+                    );
+
+                    let mut push = Push::default();
+
+                    for (index, (mesh, material)) in model.meshes.iter().enumerate() {
+
+                        push.user_data[0] = 0.0;
+                        push.user_data[1] = 15.0;
+                        push.user_data[2] = 15.0;
+                        push.user_data[3] = index as f32;
+
+                        push.tex_idx[0] = material.diffuse_map;
+                        push.tex_idx[1] = material.metallic_roughness_map;
+                        push.tex_idx[2] = material.occlusion_map;
+                        push.tex_idx[3] = material.normal_map;
+
+                        frame.device.cmd_push_constants(
+                            frame.cmd,
+                            self.layout.raw,
+                            vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                            0,
+                            bytemuck::bytes_of(&push),
+                        );
+
+                        frame.device.cmd_bind_vertex_buffers(frame.cmd, 0, &[mesh.vertex_buffer.raw], &[0]);
+                        frame.device.cmd_bind_index_buffer(frame.cmd, mesh.index_buffer.raw, 0, vk::IndexType::UINT32);
+                        frame.device.cmd_draw_indexed(frame.cmd, mesh.index_count, 1, 0, 0, 0);
+                    }
+                }
             }
         }
 

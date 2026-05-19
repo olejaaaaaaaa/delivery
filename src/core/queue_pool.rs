@@ -107,6 +107,28 @@ impl QueuePool {
             .or_else(|| self.get(flags))
     }
 
+    pub fn get_wait2(&self, flags: vk::QueueFlags) -> Option<Arc<Mutex<Queue>>> {
+        loop {
+            let mut locked_queues_count = 0;
+
+            for q in self.queues.iter().flatten() {
+                if let Ok(queue) = q.try_lock() {
+                    if queue.flags.contains(flags) {
+                        return Some(Arc::clone(q));
+                    }
+                } else {
+                    locked_queues_count += 1;
+                }
+            }
+
+            if locked_queues_count == 0 {
+                return None;
+            }
+
+            std::thread::yield_now(); 
+        }
+    }
+
     pub fn graphics(&self) -> Option<Arc<Mutex<Queue>>> {
         self.get(vk::QueueFlags::GRAPHICS)
     }

@@ -1,4 +1,4 @@
-use std::sync::{Arc, atomic::{AtomicU32, Ordering}};
+use std::sync::{Arc, Mutex, atomic::{AtomicU32, Ordering}};
 
 use ash::vk;
 
@@ -13,7 +13,7 @@ pub struct Bindless {
     pub set_layout: DescriptorSetLayout,
     pub set: vk::DescriptorSet,
     pub pool: DescriptorPool,
-    pub next_texture: AtomicU32,
+    pub next_texture: Mutex<AtomicU32>,
 }
 
 impl Bindless {
@@ -89,7 +89,7 @@ impl Bindless {
         unsafe { ctx.device.update_descriptor_sets(&[sampler_write], &[]) };
 
         Ok(Self {
-            next_texture: AtomicU32::new(0),
+            next_texture: Mutex::new(AtomicU32::new(0)),
             set_layout,
             set,
             pool,
@@ -97,7 +97,7 @@ impl Bindless {
     }
 
     pub fn alloc_texture(&self, device: &Device, image_view: vk::ImageView) -> u32 {
-        let index = self.next_texture.fetch_add(1, Ordering::Relaxed);
+        let index = self.next_texture.lock().unwrap().fetch_add(1, Ordering::SeqCst);
         self.update_texture(device, index, image_view);
         index
     }
