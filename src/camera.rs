@@ -6,7 +6,7 @@ use dolly::{drivers::{Position, Smooth, YawPitch}, rig::CameraRig};
 use glam::Vec3;
 use mint::Vector3;
 
-use crate::{core::{DescriptorPool, DescriptorSetLayoutBuilder, GpuBuffer, GpuBufferBuilder, VulkanResult}, render_context::RenderContext};
+use crate::{Resources, core::{DescriptorPool, DescriptorSetLayoutBuilder, GpuBuffer, GpuBufferBuilder, VulkanResult}, render_context::RenderContext};
 
 use dolly::prelude::*;
 use winit::event::{DeviceEvent, ElementState, KeyEvent, WindowEvent};
@@ -38,7 +38,7 @@ pub struct CameraData {
 }
 
 impl Camera {
-    pub fn new(ctx: &Arc<RenderContext>, pool: &DescriptorPool) -> VulkanResult<Self> {
+    pub fn new(ctx: &Arc<RenderContext>, res: &Arc<Resources>) -> VulkanResult<Self> {
         let rig = CameraRig::builder()
             .with(Position::new(mint::Point3 { x: 0.0, y: 0.0, z: 0.0 }))
             .with(Rotation::new(mint::Quaternion { 
@@ -46,14 +46,14 @@ impl Camera {
                 s: 0.0
             }))
             .with(YawPitch::new().yaw_degrees(45.0).pitch_degrees(-30.0))
-            .with(Smooth::new_position(1.25).predictive(true))
-            .with(Arm::new(mint::Point3 { x: 0.0, y: 1.5, z: -6.5 }))
-            .with(Smooth::new_position(2.5))
-            .with(
-                LookAt::new(mint::Point3 { x: 0.0, y: 1.0, z: 0.0 })
-                    .tracking_smoothness(1.25)
-                    .tracking_predictive(true),
-            )
+            //.with(Smooth::new_position(1.25).predictive(true))
+            //.with(Arm::new(mint::Point3 { x: 0.0, y: 1.5, z: -6.5 }))
+            // .with(Smooth::new_position(2.5))
+            // .with(
+            //     LookAt::new(mint::Point3 { x: 0.0, y: 1.0, z: 0.0 })
+            //         .tracking_smoothness(1.25)
+            //         .tracking_predictive(true),
+            // )
             .build();
 
         let buffer = GpuBufferBuilder::cpu_only(&ctx.device)
@@ -63,7 +63,7 @@ impl Camera {
 
         
         let set_layout = DescriptorSetLayoutBuilder::new(&ctx.device)
-            .bindings(vec![
+            .bindings(&[
                 vk::DescriptorSetLayoutBinding::default()
                     .stage_flags(vk::ShaderStageFlags::VERTEX)
                     .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
@@ -71,7 +71,7 @@ impl Camera {
             ])
             .build()?;
 
-        let set = pool.create_descriptor_set(&ctx.device, &[set_layout.raw])?[0];
+        let set = res.pool.create_descriptor_set(&ctx.device, &[set_layout.raw])?[0];
 
         unsafe {
 

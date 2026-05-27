@@ -4,7 +4,7 @@ use bytemuck::{Pod, Zeroable};
 use parking_lot::RwLockWriteGuard;
 use winit::window::Window;
 
-use crate::{Bindless, Camera, SkyRenderer, Texture, core::{AttributeDescriptions, BindingDescriptions, DescriptorSetLayout, GpuBuffer, GpuBufferBuilder, GraphicsPipeline, GraphicsPipelineBuilder, PipelineLayout, PipelineLayoutBuilder, ShaderBuilder, TextureVertex, Vertex, VulkanResult, load_spv}, open_vfs, render_context::{GraphicsDevice, RenderContext, WindowManager}, renderer::render_loop::FrameContext};
+use crate::{Bindless, Camera, Resources, SkyRenderer, Texture, core::{AttributeDescriptions, BindingDescriptions, DescriptorSetLayout, GpuBuffer, GpuBufferBuilder, GraphicsPipeline, GraphicsPipelineBuilder, PipelineLayout, PipelineLayoutBuilder, ShaderBuilder, TextureVertex, Vertex, VulkanResult, load_spv}, open_vfs, render_context::{GraphicsDevice, RenderContext, WindowManager}, renderer::render_loop::FrameContext, resources};
 
 pub struct LoaderRenderer {
     time: Instant,
@@ -15,9 +15,9 @@ pub struct LoaderRenderer {
 }
 
 impl LoaderRenderer {
-    pub fn new(ctx: &Arc<RenderContext>, bindless: &Bindless) -> VulkanResult<Self> {
+    pub fn new(ctx: &Arc<RenderContext>, res: &Arc<Resources>) -> VulkanResult<Self> {
 
-        let texture = image::open(open_vfs(r"assets\textures\text.png")).unwrap();
+        let texture = image::open(open_vfs(r"texture://text.png")).unwrap();
         let rgba8 = texture.as_rgba8().unwrap();
         let (width, height) = (rgba8.width(), rgba8.height());
         let pixels = rgba8.clone().into_raw();
@@ -30,7 +30,7 @@ impl LoaderRenderer {
             &pixels
         )?;
 
-        texture.bindless_index = Some(bindless.alloc_texture(&ctx.device, texture.image_view.raw));
+        texture.bindless_index = Some(res.bindless.bind_texture(&ctx.device, texture.image_view.raw));
 
         let tex_width = width as f32;
         let tex_height = height as f32;
@@ -81,21 +81,21 @@ impl LoaderRenderer {
             .alpha_blend_op(vk::BlendOp::ADD)
             .color_write_mask(vk::ColorComponentFlags::RGBA);
 
-        let bytecode = load_spv(open_vfs("raster_loader_vs.spv")).expect("Path not found or SPIR-V bytecode not valid");
+        let bytecode = load_spv(open_vfs("shader://raster_loader_vs.spv")).expect("Path not found or SPIR-V bytecode not valid");
         let vertex = ShaderBuilder::new(&ctx.device)
             .bytecode(&bytecode)
             .build()?;
 
-        let bytecode = load_spv(open_vfs("raster_loader_ps.spv")).expect("Path not found or SPIR-V bytecode not valid");
+        let bytecode = load_spv(open_vfs("shader://raster_loader_ps.spv")).expect("Path not found or SPIR-V bytecode not valid");
         let fragment = ShaderBuilder::new(&ctx.device)
             .bytecode(&bytecode)
             .build()?;
 
         let layout = PipelineLayoutBuilder::new(&ctx.device)
-            .set_layouts(vec![
-                bindless.set_layout.raw,
+            .set_layouts(&[
+                res.bindless.set_layout.raw,
             ])
-            .push_constant(vec![vk::PushConstantRange::default()
+            .push_constant(&[vk::PushConstantRange::default()
                 .offset(0)
                 .size(128)
                 .stage_flags(

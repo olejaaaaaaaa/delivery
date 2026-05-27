@@ -15,7 +15,7 @@ pub struct Track {
 
 impl Track {
     pub fn new(world: &WorldRenderer) -> VulkanResult<Self> {
-        let model = load_gltf(world ,open_vfs(r"C:\Users\Oleja\Desktop\cornell-mcray\assets\track\track.gltf"));
+        let model = load_gltf(world ,open_vfs(r"assets\meshes\pica_pica_-_mini_diorama_01\scene.gltf"));
 
         Ok(Self {
             set: None,
@@ -53,7 +53,7 @@ impl Track {
             storage_buffer.upload_data(&model.transforms).unwrap();
 
             let set_layout = DescriptorSetLayoutBuilder::new(&world.ctx.device)
-                .bindings(vec![
+                .bindings(&[
                     vk::DescriptorSetLayoutBinding::default()
                         .stage_flags(vk::ShaderStageFlags::VERTEX)
                         .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
@@ -62,7 +62,7 @@ impl Track {
                 .build()
                 .unwrap();
 
-            let set = world.pool.create_descriptor_set(&world.ctx.device, &[set_layout.raw]).unwrap()[0];
+            let set = world.resources.pool.create_descriptor_set(&world.ctx.device, &[set_layout.raw]).unwrap()[0];
 
             unsafe {
 

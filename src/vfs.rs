@@ -1,22 +1,30 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
-static VFS: OnceLock<Mutex<Vec<PathBuf>>> = OnceLock::new();
+static VFS: OnceLock<Mutex<Vec<(PathBuf, PathBuf)>>> = OnceLock::new();
 
-fn vfs() -> &'static Mutex<Vec<PathBuf>> {
+fn vfs() -> &'static Mutex<Vec<(PathBuf, PathBuf)>> {
     VFS.get_or_init(|| Mutex::new(vec![]))
 }
 
-pub fn mount_vfs(path: impl AsRef<Path>) {
-    vfs().lock().unwrap().push(path.as_ref().to_path_buf());
+pub fn mount_vfs(src: impl AsRef<Path>, dst: impl AsRef<Path>) {
+    vfs().lock().unwrap().push((
+        src.as_ref().to_path_buf(),
+        dst.as_ref().to_path_buf(),
+    ));
 }
 
 pub fn open_vfs(path: impl AsRef<Path>) -> PathBuf {
-    for mount in vfs().lock().unwrap().iter() {
-        let full = mount.join(path.as_ref());
-        if full.exists() {
-            return full;
-        }
+    let path = path.as_ref();
+
+    for (src, dst) in vfs().lock().unwrap().iter() {
+        if let Ok(relative) = path.strip_prefix(src) {
+            let candidate = dst.join(relative);
+            if candidate.exists() {
+                return candidate;
+            }
+        } 
     }
-    panic!("Not found file: {:?}", path.as_ref().as_os_str())
+
+    path.to_path_buf()
 }

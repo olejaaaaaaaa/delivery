@@ -1,20 +1,16 @@
-use std::{sync::Arc, time::Instant};
+use std::{collections::HashMap, hash::Hasher, sync::Arc, time::Instant};
 use ash::vk;
 use glam::{Mat4, Quat, Vec3};
 use rapier3d::{dynamics::{GenericJointBuilder, ImpulseJointHandle, ImpulseJointSet, JointAxesMask, JointAxis, RigidBodyBuilder, RigidBodyHandle, RigidBodySet}, geometry::{ColliderBuilder, InteractionGroups}};
 use winit::{event::{DeviceEvent, KeyEvent, WindowEvent}, event_loop::ActiveEventLoop, keyboard::{KeyCode, PhysicalKey}, window::{Window, WindowId}};
-use crate::{BackgroundUiRenderer, Bindless, Camera, Car, EguiRenderer, GltfModel, Loader2Renderer, LoaderRenderer, Mesh, PbrRenderer, PhysicsEngine, RenderLoop, SkyRenderer, Texture, Track, core::{DescriptorPool, DescriptorPoolBuilder, DescriptorSetLayout, DescriptorSetLayoutBuilder, GpuBuffer, GpuBufferBuilder, TextureVertex, Vertex, VulkanResult}, load_gltf, open_vfs, render_context::GraphicsDevice, renderer::render_loop::FrameContext};
+use crate::{BackgroundUiRenderer, Bindless, Camera, Car, EguiRenderer, GltfModel, Loader2Renderer, LoaderRenderer, Mesh, PbrRenderer, PhysicsEngine, RenderLoop, Resources, SkyRenderer, Texture, Track, core::{DescriptorPool, DescriptorPoolBuilder, DescriptorSetLayout, DescriptorSetLayoutBuilder, Device, GpuBuffer, GpuBufferBuilder, TextureVertex, Vertex, VulkanResult}, load_gltf, open_vfs, render_context::GraphicsDevice, renderer::render_loop::FrameContext};
 
 use super::super::render_context::RenderContext;
 
 pub struct WorldRenderer {
-    pub(crate) global_time: Instant,
     pub(crate) is_run: bool,
     pub(crate) debug_ui_enable: bool,
     pub(crate) camera: Camera,
-    pub(crate) last_time: std::time::Instant,
-    pub(crate) pool: DescriptorPool,
-    pub(crate) bindless: Arc<Bindless>,
     pub(crate) render_loop: RenderLoop,
     pub(crate) egui_renderer: EguiRenderer,
     pub(crate) loader2_renderer: Loader2Renderer,
@@ -23,69 +19,55 @@ pub struct WorldRenderer {
     pub(crate) sky_renderer: SkyRenderer,
     pub(crate) back_renderer: BackgroundUiRenderer,
     pub(crate) ctx: Arc<RenderContext>,
+    pub(crate) resources: Arc<Resources>
 }
 
 impl WorldRenderer {
 
     pub fn new(window: &Window) -> VulkanResult<Self> {
-        let ctx = RenderContext::new(window).unwrap();
-        let bindless = Bindless::new(&ctx)?;
 
-        let pool = DescriptorPoolBuilder::new(&ctx.device)
-            .max_sets(50)
-            .pool_sizes(&[
-                vk::DescriptorPoolSize::default()
-                    .descriptor_count(5)
-                    .ty(vk::DescriptorType::SAMPLED_IMAGE),
-                vk::DescriptorPoolSize::default()
-                    .descriptor_count(25)
-                    .ty(vk::DescriptorType::STORAGE_BUFFER),
-                vk::DescriptorPoolSize::default()
-                    .descriptor_count(5)
-                    .ty(vk::DescriptorType::STORAGE_IMAGE),
-                vk::DescriptorPoolSize::default()
-                    .descriptor_count(15)
-                    .ty(vk::DescriptorType::UNIFORM_BUFFER),
-            ])
-            .build()?;
+        let ctx = RenderContext::new(window)?;
+        let res = Resources::new(&ctx)?;
 
-        let sky_renderer = SkyRenderer::new(&ctx, &pool)?;
-        let back_renderer = BackgroundUiRenderer::new(&ctx, &bindless, &sky_renderer)?;
+        let sky_renderer = SkyRenderer::new(&ctx, &res)?;
+        let back_renderer = BackgroundUiRenderer::new(&ctx, &res, &sky_renderer)?;
 
         Ok(Self { 
             is_run: false,
-            global_time: Instant::now(),
-            debug_ui_enable: true,
-            last_time: Instant::now(),
+            debug_ui_enable: false,
             loader2_renderer: Loader2Renderer::new(&ctx)?,
-            loader_renderer: LoaderRenderer::new(&ctx, &bindless)?,
+            loader_renderer: LoaderRenderer::new(&ctx, &res)?,
             egui_renderer: EguiRenderer::new(&ctx, window),
             render_loop: RenderLoop::new(&ctx),
-            camera: Camera::new(&ctx, &pool)?,
-            pbr_renderer: PbrRenderer::new(&ctx, &bindless)?,
+            camera: Camera::new(&ctx, &res)?,
+            pbr_renderer: PbrRenderer::new(&ctx, &res)?,
             back_renderer,
             sky_renderer,
-            pool,
+            resources: res,
             ctx,
-            bindless: Arc::new(bindless),
         })
+    }
+
+    fn update_buffers(&mut self, image_index: u32) {
+
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
         self.ctx.resize(width, height).expect("Error resize window");
     }
 
-    pub fn draw(&mut self, winit_window: &Window, car: &mut Car, track: &Track) {
-        let dt = self.last_time.elapsed().as_secs_f32();
-        self.egui_renderer.frame_time = self.last_time.elapsed().as_millis() as f32;
-        self.last_time = std::time::Instant::now();
+    pub fn draw(&mut self, window: &Window, dt: f32, car: &mut Car, track: &Track) {
+  
+        self.egui_renderer.frame_time = dt * 1000.0;
 
         let resolution = self.ctx.resolution();
         self.camera.update(dt, resolution.width as f32 / resolution.height as f32);
 
         self.render_loop.draw(&self.ctx, |frame| {
 
-            if !self.sky_renderer.sky_rendered_once {
+            //if self.sky_renderer.sky_rendered_once {
+                //let time = Instant::now();
+
                 transition_image_layout(&frame,
                     self.sky_renderer.cube_map.image.raw,
                     vk::ImageLayout::UNDEFINED,
@@ -100,7 +82,8 @@ impl WorldRenderer {
                     vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
                 );
                 self.sky_renderer.sky_rendered_once = true;
-            }
+                //println!("skybox time: {:?}", time.elapsed().as_secs_f32());
+            //}
 
             unsafe {
                 let clear_values = vec![
@@ -135,27 +118,25 @@ impl WorldRenderer {
                 );
             }
 
-            if track.model.is_none() || self.is_run {
-                //println!("One");
-                self.loader2_renderer.draw_fullscreen(&frame, winit_window);
+            if track.model.is_none() || !self.is_run {
+                self.loader2_renderer.draw_fullscreen(&frame, window);
                 self.loader_renderer.draw_fullscreen(
                     &frame, 
-                    &self.bindless, 
-                    winit_window
+                    &self.resources.bindless, 
+                window
                 );
             } else {
-
-                //println!("Two");
                 self.back_renderer.draw_fullscreen(
                     &frame,
                     &self.camera,
-                    &self.bindless,
+                    &self.resources.bindless,
                     &self.sky_renderer
                 );
 
                 self.pbr_renderer.draw_mesh(
                     &frame,
-                    &self.bindless, 
+                    &self.resources.bindless, 
+                    &self.sky_renderer,
                     &self.camera,
                     car,
                     track
@@ -165,7 +146,7 @@ impl WorldRenderer {
             car.last_image = frame.image_index;
             
             if self.debug_ui_enable {
-                self.egui_renderer.draw(winit_window, &frame);
+                self.egui_renderer.draw(window, &frame);
             }
 
             unsafe {

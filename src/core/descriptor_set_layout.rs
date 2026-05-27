@@ -11,7 +11,7 @@ pub struct DescriptorSetLayoutBuilder<'a> {
     device: &'a Device,
     flags: vk::DescriptorSetLayoutCreateFlags,
     push_next: Option<&'a mut vk::DescriptorSetLayoutBindingFlagsCreateInfo<'a>>,
-    bindings: Vec<vk::DescriptorSetLayoutBinding<'static>>,
+    bindings: Option<&'a [vk::DescriptorSetLayoutBinding<'static>]>,
 }
 
 impl<'a> DescriptorSetLayoutBuilder<'a> {
@@ -19,13 +19,13 @@ impl<'a> DescriptorSetLayoutBuilder<'a> {
         Self {
             flags: vk::DescriptorSetLayoutCreateFlags::empty(),
             push_next: None,
-            bindings: vec![],
+            bindings: None,
             device,
         }
     }
 
-    pub fn bindings(mut self, bindings: Vec<vk::DescriptorSetLayoutBinding<'static>>) -> Self {
-        self.bindings = bindings;
+    pub fn bindings(mut self, bindings: &'a [vk::DescriptorSetLayoutBinding<'static>]) -> Self {
+        self.bindings = Some(bindings);
         self
     }
 
@@ -43,11 +43,12 @@ impl<'a> DescriptorSetLayoutBuilder<'a> {
     }
 
     pub fn build(self) -> VulkanResult<DescriptorSetLayout> {
-        debug_assert!(!self.bindings.is_empty(), "Bindings empty!");
+
+        let bindings = self.bindings.expect("Missings bindings");
 
         let mut create_info = vk::DescriptorSetLayoutCreateInfo::default()
             .flags(self.flags)
-            .bindings(&self.bindings);
+            .bindings(bindings);
 
         if let Some(next) = self.push_next {
             create_info = create_info.push_next(next);

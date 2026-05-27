@@ -3,7 +3,7 @@ use ash::vk::{self, Format};
 use bytemuck::{Pod, Zeroable};
 use parking_lot::RwLockWriteGuard;
 
-use crate::{Texture, core::{AttributeDescriptions, BindingDescriptions, ComputePipeline, ComputePipelineBuilder, DescriptorPool, DescriptorSetLayout, DescriptorSetLayoutBuilder, GpuBuffer, GraphicsPipeline, GraphicsPipelineBuilder, PipelineLayout, PipelineLayoutBuilder, ShaderBuilder, Vertex, VulkanResult, load_spv}, open_vfs, render_context::{GraphicsDevice, RenderContext, WindowManager}, renderer::render_loop::FrameContext};
+use crate::{Resources, SetLayoutDesc, Texture, core::{AttributeDescriptions, BindingDescriptions, ComputePipeline, ComputePipelineBuilder, DescriptorPool, DescriptorSetLayout, DescriptorSetLayoutBuilder, GpuBuffer, GraphicsPipeline, GraphicsPipelineBuilder, PipelineLayout, PipelineLayoutBuilder, ShaderBuilder, Vertex, VulkanResult, load_spv}, open_vfs, render_context::{GraphicsDevice, RenderContext, WindowManager}, renderer::render_loop::FrameContext};
 
 pub struct SkyRenderer {
     pipeline: ComputePipeline,
@@ -11,22 +11,22 @@ pub struct SkyRenderer {
     pub time: Instant,
     pub sky_rendered_once: bool,
     pub compute_layout: DescriptorSetLayout,
-    pub sampled_layout: DescriptorSetLayout,
     pub compute_cube_set: vk::DescriptorSet,
     pub sampled_cude_set: vk::DescriptorSet,
     pub cube_map: Texture,
+    pub array_map: Texture,
 }
 
 impl SkyRenderer {
-    pub fn new(ctx: &Arc<RenderContext>, pool: &DescriptorPool) -> VulkanResult<Self> {
+    pub fn new(ctx: &Arc<RenderContext>, res: &Arc<Resources>) -> VulkanResult<Self> {
 
-        let bytecode = load_spv(open_vfs("atmosphere.spv")).expect("Path not found or SPIR-V bytecode not valid");
+        let bytecode = load_spv(open_vfs("shader://atmosphere.spv")).expect("Path not found or SPIR-V bytecode not valid");
         let shader = ShaderBuilder::new(&ctx.device)
             .bytecode(&bytecode)
             .build()?;
 
         let compute_set_layout = DescriptorSetLayoutBuilder::new(&ctx.device)
-            .bindings(vec![
+            .bindings(&[
                 vk::DescriptorSetLayoutBinding::default()
                     .binding(0)
                     .stage_flags(vk::ShaderStageFlags::COMPUTE)
@@ -35,29 +35,31 @@ impl SkyRenderer {
             ])
             .build()?;
 
-        let fragment_set_layout = DescriptorSetLayoutBuilder::new(&ctx.device)
-            .bindings(vec![
+        let mut cache = res.set_layout.lock();
+        let fragment_set_layout = cache.get_or_create(&ctx.device, SetLayoutDesc {
+            bindings: vec![
                 vk::DescriptorSetLayoutBinding::default()
                     .binding(0)
                     .stage_flags(vk::ShaderStageFlags::FRAGMENT)
                     .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
-                    .descriptor_count(1),
-            ])
-            .build()?;
+                    .descriptor_count(1)
+            ]
+        })?;
 
-        let sets = pool.create_descriptor_set(
+        let sets = res.pool.create_descriptor_set(
             &ctx.device, 
             &[compute_set_layout.raw, fragment_set_layout.raw]
         )?;
 
         let (compute_set, fragment_set) = (sets[0], sets[1]);
-        let cube_map = Texture::cube(ctx, vk::Format::R32G32B32A32_SFLOAT, 512, 512)?;
+    
+        let (array_map, cube_map) = Texture::cube_pairs(ctx, vk::Format::R32G32B32A32_SFLOAT, 64, 64)?;
 
         unsafe {
 
             let compute_image_info = vk::DescriptorImageInfo::default()
                 .image_layout(vk::ImageLayout::GENERAL)
-                .image_view(cube_map.image_view.raw);
+                .image_view(array_map.image_view.raw);
 
             let fragment_image_info = vk::DescriptorImageInfo::default()
                 .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
@@ -79,10 +81,10 @@ impl SkyRenderer {
         }
 
         let layout = PipelineLayoutBuilder::new(&ctx.device)
-            .set_layouts(vec![
+            .set_layouts(&[
                 compute_set_layout.raw
             ])
-            .push_constant(vec![vk::PushConstantRange::default()
+            .push_constant(&[vk::PushConstantRange::default()
                 .offset(0)
                 .size(128)
                 .stage_flags(
@@ -98,9 +100,9 @@ impl SkyRenderer {
         Ok(Self {
             time: Instant::now(),
             sky_rendered_once: false,
+            array_map,
             cube_map,
             pipeline,
-            sampled_layout: fragment_set_layout,
             compute_layout: compute_set_layout,
             compute_cube_set: compute_set,
             sampled_cude_set: fragment_set,
@@ -129,16 +131,20 @@ impl SkyRenderer {
                 pre_exposure: f32
             }
 
+            let t = self.time.elapsed().as_secs_f32() * 0.2;
+            let dir = glam::Vec3::new(t.cos(), t.sin().abs(), 0.0).normalize();
+
+            let k = 12.0;
+
             let push = FrameConstants {
                 sky_ambient: [0.0, 0.0, 0.0, 0.0],
-                sun_color_multiplier: [1.0, 0.95, 0.8, 0.0],
-                pre_exposure: 1.0 / 2.0, 
-                sun_direction: [
-                    0.0, 
-                    1.0, 
-                    0.0
-                ],
+                sun_color_multiplier: [k, 0.95 * k, 0.8 * k, 0.0],
+                pre_exposure: 1.0,
+                sun_direction: dir.to_array(),
+                //sun_direction: [0.0, 0.05712185, 0.98968582],
             };
+
+            //println!("sun dir: {:?}", dir);
 
             frame.device.cmd_push_constants(
                 frame.cmd,
@@ -148,7 +154,7 @@ impl SkyRenderer {
                 bytemuck::bytes_of(&push),
             );
 
-            frame.device.cmd_dispatch(frame.cmd, 512/8, 512/8, 6);
+            frame.device.cmd_dispatch(frame.cmd, 64, 64, 6);
         }
     }
 

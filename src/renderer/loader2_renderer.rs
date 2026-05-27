@@ -26,19 +26,19 @@ impl Loader2Renderer {
             )
             .blend_enable(false);
 
-        let bytecode = load_spv(open_vfs("raster_loader2_vs.spv")).expect("Path not found or SPIR-V bytecode not valid");
+        let bytecode = load_spv(open_vfs("shader://raster_loader2_vs.spv")).expect("Path not found or SPIR-V bytecode not valid");
         let vertex = ShaderBuilder::new(&ctx.device)
             .bytecode(&bytecode)
             .build()?;
 
-        let bytecode = load_spv(open_vfs("raster_loader2_ps.spv")).expect("Path not found or SPIR-V bytecode not valid");
+        let bytecode = load_spv(open_vfs("shader://raster_loader2_ps.spv")).expect("Path not found or SPIR-V bytecode not valid");
         let fragment = ShaderBuilder::new(&ctx.device)
             .bytecode(&bytecode)
             .build()?;
 
         let layout = PipelineLayoutBuilder::new(&ctx.device)
-            .set_layouts(vec![])
-            .push_constant(vec![vk::PushConstantRange::default()
+            .set_layouts(&[])
+            .push_constant(&[vk::PushConstantRange::default()
                 .offset(0)
                 .size(128)
                 .stage_flags(

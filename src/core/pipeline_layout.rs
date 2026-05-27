@@ -8,34 +8,38 @@ pub struct PipelineLayout {
 }
 
 pub struct PipelineLayoutBuilder<'a> {
-    layout: Vec<vk::DescriptorSetLayout>,
-    push: Vec<vk::PushConstantRange>,
+    layouts: Option<&'a [vk::DescriptorSetLayout]>,
+    push: Option<&'a [vk::PushConstantRange]>,
     device: &'a Device,
 }
 
 impl<'a> PipelineLayoutBuilder<'a> {
     pub fn new(device: &'a Device) -> Self {
         Self {
-            push: vec![],
-            layout: vec![],
+            push: None,
+            layouts: None,
             device,
         }
     }
 
-    pub fn set_layouts(mut self, layouts: Vec<vk::DescriptorSetLayout>) -> Self {
-        self.layout = layouts;
+    pub fn set_layouts(mut self, layouts: &'a [vk::DescriptorSetLayout]) -> Self {
+        self.layouts = Some(layouts);
         self
     }
 
-    pub fn push_constant(mut self, push: Vec<vk::PushConstantRange>) -> Self {
-        self.push = push;
+    pub fn push_constant(mut self, push: &'a [vk::PushConstantRange]) -> Self {
+        self.push = Some(push);
         self
     }
 
     pub fn build(self) -> VulkanResult<PipelineLayout> {
+
+        let push = self.push.expect("Missing Push");
+        let layouts = self.layouts.unwrap_or(&[]);
+
         let create_info = vk::PipelineLayoutCreateInfo::default()
-            .push_constant_ranges(&self.push)
-            .set_layouts(&self.layout);
+            .push_constant_ranges(push)
+            .set_layouts(layouts);
 
         let layout = unsafe {
             profiling::scope!("vkCreatePipelineLayout");
@@ -46,8 +50,8 @@ impl<'a> PipelineLayoutBuilder<'a> {
 
         debug!(
             handle = ?layout,
-            push = ?self.push,
-            set_layout = ?self.layout,
+            push = ?push,
+            set_layout = ?layouts,
             "PipelineLayout created"
         );
 

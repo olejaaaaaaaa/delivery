@@ -23,18 +23,18 @@ impl CarRenderer {
             )
             .blend_enable(false);
 
-        let bytecode = load_spv(open_vfs("raster_car_vs.spv")).expect("Path not found or SPIR-V bytecode not valid");
+        let bytecode = load_spv(open_vfs("shader://raster_car_vs.spv")).expect("Path not found or SPIR-V bytecode not valid");
         let vertex = ShaderBuilder::new(&ctx.device)
             .bytecode(&bytecode)
             .build()?;
 
-        let bytecode = load_spv(open_vfs("raster_car_ps.spv")).expect("Path not found or SPIR-V bytecode not valid");
+        let bytecode = load_spv(open_vfs("shader://raster_car_ps.spv")).expect("Path not found or SPIR-V bytecode not valid");
         let fragment = ShaderBuilder::new(&ctx.device)
             .bytecode(&bytecode)
             .build()?;
 
         let camera_set_layout = DescriptorSetLayoutBuilder::new(&ctx.device)
-            .bindings(vec![
+            .bindings(&[
                 vk::DescriptorSetLayoutBinding::default()
                     .stage_flags(vk::ShaderStageFlags::VERTEX)
                     .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
@@ -43,7 +43,7 @@ impl CarRenderer {
             .build()?;
 
         let transforms_set_layout = DescriptorSetLayoutBuilder::new(&ctx.device)
-            .bindings(vec![
+            .bindings(&[
                 vk::DescriptorSetLayoutBinding::default()
                     .stage_flags(vk::ShaderStageFlags::VERTEX)
                     .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
@@ -52,12 +52,12 @@ impl CarRenderer {
             .build()?;
 
         let layout = PipelineLayoutBuilder::new(&ctx.device)
-            .set_layouts(vec![
+            .set_layouts(&[
                 bindless.set_layout.raw, 
                 transforms_set_layout.raw, 
                 camera_set_layout.raw
             ])
-            .push_constant(vec![vk::PushConstantRange::default()
+            .push_constant(&[vk::PushConstantRange::default()
                 .offset(0)
                 .size(128)
                 .stage_flags(

@@ -4,10 +4,7 @@ use ash::vk;
 
 use crate::{core::{DescriptorPool, DescriptorPoolBuilder, DescriptorSetLayout, DescriptorSetLayoutBuilder, Device, VulkanResult}, render_context::RenderContext};
 
-
 const MAX_SAMPLED_IMAGE: u32 = 16_384;
-const MAX_STORAGE_IMAGES: u32 = 1_024;
-const MAX_SAMPLER: u32 = 5;
 
 pub struct Bindless {
     pub set_layout: DescriptorSetLayout,
@@ -44,7 +41,7 @@ impl Bindless {
             vk::DescriptorSetLayoutBindingFlagsCreateInfo::default().binding_flags(&binding_flags);
 
         let set_layout = DescriptorSetLayoutBuilder::new(&ctx.device)
-            .bindings(layout.clone())
+            .bindings(&layout)
             .flags(vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL)
             .push_next(&mut binding_flags_info)
             .build()?;
@@ -88,6 +85,27 @@ impl Bindless {
 
         unsafe { ctx.device.update_descriptor_sets(&[sampler_write], &[]) };
 
+        // let sampler_info = vk::SamplerCreateInfo::default()
+        //     .mag_filter(vk::Filter::LINEAR)
+        //     .min_filter(vk::Filter::LINEAR)
+        //     .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+        //     .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+        //     .address_mode_w(vk::SamplerAddressMode::CLAMP_TO_EDGE);
+
+        // let sampler2 = unsafe { ctx.device.create_sampler(&sampler_info, None).unwrap() };
+
+        // let sampler_info_desc = vk::DescriptorImageInfo::default().sampler(sampler);
+
+        // let sampler_write = vk::WriteDescriptorSet::default()
+        //     .dst_set(set)
+        //     .dst_binding(1)
+        //     .dst_array_element(0)
+        //     .descriptor_type(vk::DescriptorType::SAMPLER)
+        //     .image_info(std::slice::from_ref(&sampler_info_desc));
+
+        // unsafe { ctx.device.update_descriptor_sets(&[sampler_write], &[]) };
+
+
         Ok(Self {
             next_texture: Mutex::new(AtomicU32::new(0)),
             set_layout,
@@ -96,7 +114,7 @@ impl Bindless {
         })
     }
 
-    pub fn alloc_texture(&self, device: &Device, image_view: vk::ImageView) -> u32 {
+    pub fn bind_texture(&self, device: &Device, image_view: vk::ImageView) -> u32 {
         let index = self.next_texture.lock().unwrap().fetch_add(1, Ordering::SeqCst);
         self.update_texture(device, index, image_view);
         index

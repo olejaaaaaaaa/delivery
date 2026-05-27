@@ -3,7 +3,7 @@ use ash::vk;
 use bytemuck::{Pod, Zeroable};
 use parking_lot::RwLockWriteGuard;
 
-use crate::{Bindless, Camera, Car, GltfModel, Track, core::{AttributeDescriptions, BindingDescriptions, DescriptorPool, DescriptorSetLayout, DescriptorSetLayoutBuilder, GpuBuffer, GraphicsPipeline, GraphicsPipelineBuilder, PbrVertex, PipelineLayout, PipelineLayoutBuilder, ShaderBuilder, Vertex, VulkanResult, load_spv}, open_vfs, render_context::{GraphicsDevice, RenderContext, WindowManager}, renderer::render_loop::FrameContext};
+use crate::{Bindless, Camera, Car, GltfModel, Resources, SetLayoutDesc, SkyRenderer, Track, core::{AttributeDescriptions, BindingDescriptions, DescriptorPool, DescriptorSetLayout, DescriptorSetLayoutBuilder, GpuBuffer, GraphicsPipeline, GraphicsPipelineBuilder, PbrVertex, PipelineLayout, PipelineLayoutBuilder, ShaderBuilder, Vertex, VulkanResult, load_spv}, open_vfs, render_context::{GraphicsDevice, RenderContext, WindowManager}, renderer::render_loop::FrameContext};
 
 pub struct PbrRenderer {
     layout: PipelineLayout,
@@ -11,7 +11,7 @@ pub struct PbrRenderer {
 }
 
 impl PbrRenderer {
-    pub fn new(ctx: &Arc<RenderContext>, bindless: &Bindless) -> VulkanResult<Self> {
+    pub fn new(ctx: &Arc<RenderContext>, res: &Arc<Resources>) -> VulkanResult<Self> {
 
         let resolution = ctx.resolution();
         let color_blend = vk::PipelineColorBlendAttachmentState::default()
@@ -23,18 +23,29 @@ impl PbrRenderer {
             )
             .blend_enable(false);
 
-        let bytecode = load_spv(open_vfs("raster_pbr_vs.spv")).expect("Path not found or SPIR-V bytecode not valid");
+        let bytecode = load_spv(open_vfs("shader://raster_pbr_vs.spv")).expect("Path not found or SPIR-V bytecode not valid");
         let vertex = ShaderBuilder::new(&ctx.device)
             .bytecode(&bytecode)
             .build()?;
 
-        let bytecode = load_spv(open_vfs("raster_pbr_ps.spv")).expect("Path not found or SPIR-V bytecode not valid");
+        let bytecode = load_spv(open_vfs("shader://raster_pbr_ps.spv")).expect("Path not found or SPIR-V bytecode not valid");
         let fragment = ShaderBuilder::new(&ctx.device)
             .bytecode(&bytecode)
             .build()?;
 
+        let mut cache = res.set_layout.lock();
+        let cube_set_layout = cache.get_or_create(&ctx.device, SetLayoutDesc {
+            bindings: vec![
+                vk::DescriptorSetLayoutBinding::default()
+                    .binding(0)
+                    .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+                    .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
+                    .descriptor_count(1)
+            ]
+        })?;
+
         let camera_set_layout = DescriptorSetLayoutBuilder::new(&ctx.device)
-            .bindings(vec![
+            .bindings(&[
                 vk::DescriptorSetLayoutBinding::default()
                     .stage_flags(vk::ShaderStageFlags::VERTEX)
                     .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
@@ -43,7 +54,7 @@ impl PbrRenderer {
             .build()?;
 
         let transforms_set_layout = DescriptorSetLayoutBuilder::new(&ctx.device)
-            .bindings(vec![
+            .bindings(&[
                 vk::DescriptorSetLayoutBinding::default()
                     .stage_flags(vk::ShaderStageFlags::VERTEX)
                     .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
@@ -52,12 +63,13 @@ impl PbrRenderer {
             .build()?;
 
         let layout = PipelineLayoutBuilder::new(&ctx.device)
-            .set_layouts(vec![
-                bindless.set_layout.raw, 
+            .set_layouts(&[
+                res.bindless.set_layout.raw, 
                 transforms_set_layout.raw, 
-                camera_set_layout.raw
+                camera_set_layout.raw,
+                cube_set_layout.raw
             ])
-            .push_constant(vec![vk::PushConstantRange::default()
+            .push_constant(&[vk::PushConstantRange::default()
                 .offset(0)
                 .size(128)
                 .stage_flags(
@@ -134,7 +146,7 @@ impl PbrRenderer {
         })
     }
 
-    pub fn draw_mesh(&self, frame: &FrameContext<'_>, bindless: &Bindless, camera: &Camera, car: &Car, track: &Track) {
+    pub fn draw_mesh(&self, frame: &FrameContext<'_>, bindless: &Bindless, sky: &SkyRenderer, camera: &Camera, car: &Car, track: &Track) {
 
         if let Some(model) = &track.model {
 
@@ -165,7 +177,7 @@ impl PbrRenderer {
                     vk::PipelineBindPoint::GRAPHICS, 
                     self.layout.raw, 
                     0, 
-                    &[bindless.set, track.set.unwrap(), camera.set], 
+                    &[bindless.set, track.set.unwrap(), camera.set, sky.sampled_cude_set], 
                     &[]
                 );
 

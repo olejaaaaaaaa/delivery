@@ -183,7 +183,7 @@ pub fn load_gltf<P: AsRef<Path>>(world: &WorldRenderer, path: P) ->  std::thread
     let path = path.as_ref().to_path_buf();
 
     let ctx = world.ctx.clone();
-    let bindless = world.bindless.clone();
+    let bindless = world.resources.bindless.clone();
 
     let join_handle: std::thread::JoinHandle<VulkanResult<GltfModel>> = std::thread::spawn(move || {
 
@@ -197,28 +197,28 @@ pub fn load_gltf<P: AsRef<Path>>(world: &WorldRenderer, path: P) ->  std::thread
         // index 0 - diffuse fallback (белый)
         let pixels = vec![255u8, 255, 255, 255];
         let mut tex = Texture::new(&ctx, vk::Format::R8G8B8A8_SRGB, 1, 1, &pixels).unwrap();
-        let idx = bindless.alloc_texture(&ctx.device, tex.image_view.raw);
+        let idx = bindless.bind_texture(&ctx.device, tex.image_view.raw);
         tex.bindless_index = Some(idx);
         textures.push(tex); // bindless 0
 
         // index 1 - metallic_roughness fallback (не металл, средняя шершавость)
         let pixels = vec![0u8, 128, 0, 255]; // r=occlusion, g=roughness, b=metallic
         let mut tex = Texture::new(&ctx, vk::Format::R8G8B8A8_SRGB, 1, 1, &pixels).unwrap();
-        let idx = bindless.alloc_texture(&ctx.device, tex.image_view.raw);
+        let idx = bindless.bind_texture(&ctx.device, tex.image_view.raw);
         tex.bindless_index = Some(idx);
         textures.push(tex); // bindless 1
 
         // index 2 - occlusion fallback (белый = нет затенения)
         let pixels = vec![255u8, 255, 255, 255];
         let mut tex = Texture::new(&ctx, vk::Format::R8G8B8A8_SRGB, 1, 1, &pixels).unwrap();
-        let idx = bindless.alloc_texture(&ctx.device, tex.image_view.raw);
+        let idx = bindless.bind_texture(&ctx.device, tex.image_view.raw);
         tex.bindless_index = Some(idx);
         textures.push(tex); // bindless 2
 
         // index 3 - normal fallback (flat normal = 128, 128, 255)
         let pixels = vec![128u8, 128, 255, 255];
         let mut tex = Texture::new(&ctx, vk::Format::R8G8B8A8_SRGB, 1, 1, &pixels).unwrap();
-        let idx = bindless.alloc_texture(&ctx.device, tex.image_view.raw);
+        let idx = bindless.bind_texture(&ctx.device, tex.image_view.raw);
         tex.bindless_index = Some(idx);
         textures.push(tex); // bindless 3
 
@@ -271,7 +271,7 @@ pub fn load_gltf<P: AsRef<Path>>(world: &WorldRenderer, path: P) ->  std::thread
             let pixels = rgba8.into_raw();
 
             let mut tex = Texture::new(&ctx, vk::Format::R8G8B8A8_UNORM, width, height, &pixels).unwrap();
-            let idx = bindless.alloc_texture(&ctx.device, tex.image_view.raw); // <-- здесь, не в отдельном цикле
+            let idx = bindless.bind_texture(&ctx.device, tex.image_view.raw); // <-- здесь, не в отдельном цикле
             tex.bindless_index = Some(idx);
 
             gltf_image_to_bindless.insert(gltf_index, idx);

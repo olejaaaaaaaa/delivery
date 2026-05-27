@@ -41,7 +41,7 @@ impl Car {
 
     pub fn new(world: &WorldRenderer, physics: &mut PhysicsEngine) -> VulkanResult<Self> {
 
-        let car = load_gltf(world, open_vfs(r"assets\meshes\car2.glb"));
+        let car = load_gltf(world, open_vfs(r"assets\meshes\flighthelmet\scene.gltf"));
         
         // let left_up_wheel = load_gltf(world,  open_vfs(r"assets\meshes\lu_wheel.glb")).join().unwrap()?;
         // let right_up_wheel = load_gltf(world, open_vfs(r"assets\meshes\ru_wheel.glb")).join().unwrap()?;
@@ -212,7 +212,7 @@ impl Car {
 
             // Один rigid body
             let rigid_body = RigidBodyBuilder::dynamic()
-                .translation(Vec3::new(0.0, 1.0, 0.0))
+                .translation(Vec3::new(0.0, 10.0, 0.0))
                 .build();
 
             let rigid_handle = physics.create_rigid_body(rigid_body);
@@ -241,7 +241,7 @@ impl Car {
                 car_storage_buffer.upload_data(&model.transforms).unwrap();
 
                 let set_layout = DescriptorSetLayoutBuilder::new(&world.ctx.device)
-                    .bindings(vec![
+                    .bindings(&[
                         vk::DescriptorSetLayoutBinding::default()
                             .stage_flags(vk::ShaderStageFlags::VERTEX)
                             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
@@ -250,7 +250,7 @@ impl Car {
                     .build()
                     .unwrap();
 
-                let car_set = world.pool.create_descriptor_set(&world.ctx.device, &[set_layout.raw]).unwrap()[0];
+                let car_set = world.resources.pool.create_descriptor_set(&world.ctx.device, &[set_layout.raw]).unwrap()[0];
 
                 unsafe {
 

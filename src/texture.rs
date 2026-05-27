@@ -6,7 +6,7 @@ use crate::{core::{CommandPoolBuilder, GpuBufferBuilder, Image, ImageBuilder, Im
 
 pub struct Texture {
     pub bindless_index: Option<u32>,
-    pub image: Image,
+    pub image: Arc<Image>,
     pub image_view: ImageView
 }
 
@@ -60,7 +60,7 @@ impl Texture {
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
 
         unsafe {
-            ctx.device.begin_command_buffer(cmd, &begin_info);
+            let _ = ctx.device.begin_command_buffer(cmd, &begin_info);
         }
 
         unsafe {
@@ -129,7 +129,7 @@ impl Texture {
         }
 
         unsafe {
-            ctx.device.end_command_buffer(cmd);
+            let _ = ctx.device.end_command_buffer(cmd);
         }
 
         let binding = [cmd];
@@ -158,9 +158,115 @@ impl Texture {
 
         Ok(Self {
             bindless_index: None,
-            image,
+            image: Arc::new(image),
             image_view
         })
+    }
+
+    pub fn array(ctx: &Arc<RenderContext>, format: vk::Format, width: u32, height: u32, layers: u32) -> VulkanResult<Self> {
+
+        let flags = if layers == 6 {
+            vk::ImageCreateFlags::CUBE_COMPATIBLE
+        } else {
+            vk::ImageCreateFlags::empty()
+        };
+
+        let image = ImageBuilder::new(&ctx.device)
+            .extent(vk::Extent3D {
+                width,
+                height,
+                depth: 1,
+            })
+            .array_layers(layers)
+            .format(format)
+            .flags(flags)
+            .image_type(vk::ImageType::TYPE_2D)
+            .usage(vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED)
+            .build()?;
+
+        let image_view = ImageViewBuilder::new(&ctx.device)
+            .components(vk::ComponentMapping::default())
+            .format(format)
+            .image(image.raw)
+            .view_type(vk::ImageViewType::TYPE_2D_ARRAY)
+            .subresource_range(
+                vk::ImageSubresourceRange::default()
+                    .aspect_mask(vk::ImageAspectFlags::COLOR)
+                    .base_array_layer(0)
+                    .layer_count(6)
+                    .base_mip_level(0)
+                    .level_count(1),
+            )
+            .build()?;
+
+         Ok(Self {
+            bindless_index: None,
+            image: Arc::new(image),
+            image_view
+        })
+    }
+
+    /// return array/cube 
+    pub fn cube_pairs(ctx: &Arc<RenderContext>, format: vk::Format, width: u32, height: u32) -> VulkanResult<(Self, Self)> {
+        
+        // Create 2D array cube
+        let image = Arc::new(ImageBuilder::new(&ctx.device)
+            .extent(vk::Extent3D {
+                width,
+                height,
+                depth: 1,
+            })
+            .array_layers(6)
+            .format(format)
+            .flags(vk::ImageCreateFlags::CUBE_COMPATIBLE)
+            .image_type(vk::ImageType::TYPE_2D)
+            .usage(vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED)
+            .build()?
+        );
+
+        let image_view_array = ImageViewBuilder::new(&ctx.device)
+            .components(vk::ComponentMapping::default())
+            .format(format)
+            .image(image.raw)
+            .view_type(vk::ImageViewType::TYPE_2D_ARRAY)
+            .subresource_range(
+                vk::ImageSubresourceRange::default()
+                    .aspect_mask(vk::ImageAspectFlags::COLOR)
+                    .base_array_layer(0)
+                    .layer_count(6)
+                    .base_mip_level(0)
+                    .level_count(1),
+            )
+            .build()?;
+
+        let array = Self {
+            bindless_index: None,
+            image: image.clone(),
+            image_view: image_view_array
+        };
+
+        let image_view_cube = ImageViewBuilder::new(&ctx.device)
+            .components(vk::ComponentMapping::default())
+            .format(format)
+            .image(image.raw)
+            .view_type(vk::ImageViewType::CUBE)
+            .subresource_range(
+                vk::ImageSubresourceRange::default()
+                    .aspect_mask(vk::ImageAspectFlags::COLOR)
+                    .base_array_layer(0)
+                    .layer_count(6)
+                    .base_mip_level(0)
+                    .level_count(1),
+            )
+            .build()?;
+
+        let cube = Self {
+            bindless_index: None,
+            image,
+            image_view: image_view_cube
+        };
+
+        Ok((array, cube))
     }
 
     pub fn cube(ctx: &Arc<RenderContext>, format: vk::Format, width: u32, height: u32) -> VulkanResult<Self> {
@@ -182,7 +288,7 @@ impl Texture {
             .components(vk::ComponentMapping::default())
             .format(format)
             .image(image.raw)
-            .view_type(vk::ImageViewType::TYPE_2D_ARRAY)
+            .view_type(vk::ImageViewType::CUBE)
             .subresource_range(
                 vk::ImageSubresourceRange::default()
                     .aspect_mask(vk::ImageAspectFlags::COLOR)
@@ -195,7 +301,7 @@ impl Texture {
 
         Ok(Self {
             bindless_index: None,
-            image,
+            image: Arc::new(image),
             image_view
         })
     }

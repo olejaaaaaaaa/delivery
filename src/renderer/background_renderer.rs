@@ -3,7 +3,7 @@ use ash::vk;
 use bytemuck::{Pod, Zeroable};
 use parking_lot::RwLockWriteGuard;
 
-use crate::{Bindless, Camera, SkyRenderer, core::{AttributeDescriptions, BindingDescriptions, DescriptorSetLayout, GpuBuffer, GraphicsPipeline, GraphicsPipelineBuilder, PipelineLayout, PipelineLayoutBuilder, ShaderBuilder, TextureVertex, Vertex, VulkanResult, load_spv}, open_vfs, render_context::{GraphicsDevice, RenderContext, WindowManager}, renderer::render_loop::FrameContext};
+use crate::{Bindless, Camera, Resources, SetLayoutDesc, SkyRenderer, core::{AttributeDescriptions, BindingDescriptions, DescriptorSetLayout, GpuBuffer, GraphicsPipeline, GraphicsPipelineBuilder, PipelineLayout, PipelineLayoutBuilder, ShaderBuilder, TextureVertex, Vertex, VulkanResult, load_spv}, open_vfs, render_context::{GraphicsDevice, RenderContext, WindowManager}, renderer::render_loop::FrameContext};
 
 pub struct BackgroundUiRenderer {
     layout: PipelineLayout,
@@ -11,7 +11,7 @@ pub struct BackgroundUiRenderer {
 }
 
 impl BackgroundUiRenderer {
-    pub fn new(ctx: &Arc<RenderContext>, bindless: &Bindless, sky: &SkyRenderer) -> VulkanResult<Self> {
+    pub fn new(ctx: &Arc<RenderContext>, res: &Resources, sky: &SkyRenderer) -> VulkanResult<Self> {
 
         let resolution = ctx.resolution();
         let color_blend = vk::PipelineColorBlendAttachmentState::default()
@@ -23,21 +23,32 @@ impl BackgroundUiRenderer {
             )
             .blend_enable(false);
 
-        let bytecode = load_spv(open_vfs("raster_ui_vs.spv")).expect("Path not found or SPIR-V bytecode not valid");
+        let bytecode = load_spv(open_vfs("shader://raster_ui_vs.spv")).expect("Path not found or SPIR-V bytecode not valid");
         let vertex = ShaderBuilder::new(&ctx.device)
             .bytecode(&bytecode)
             .build()?;
 
-        let bytecode = load_spv(open_vfs("raster_ui_ps.spv")).expect("Path not found or SPIR-V bytecode not valid");
+        let bytecode = load_spv(open_vfs("shader://raster_ui_ps.spv")).expect("Path not found or SPIR-V bytecode not valid");
         let fragment = ShaderBuilder::new(&ctx.device)
             .bytecode(&bytecode)
             .build()?;
 
+        let mut cache = res.set_layout.lock();
+        let sky_set_layout = cache.get_or_create(&ctx.device, SetLayoutDesc {
+            bindings: vec![
+                vk::DescriptorSetLayoutBinding::default()
+                    .binding(0)
+                    .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+                    .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
+                    .descriptor_count(1)
+            ]
+        })?;
+
         let layout = PipelineLayoutBuilder::new(&ctx.device)
-            .set_layouts(vec![
-                bindless.set_layout.raw, sky.sampled_layout.raw
+            .set_layouts(&[
+                res.bindless.set_layout.raw, sky_set_layout.raw
             ])
-            .push_constant(vec![vk::PushConstantRange::default()
+            .push_constant(&[vk::PushConstantRange::default()
                 .offset(0)
                 .size(128)
                 .stage_flags(

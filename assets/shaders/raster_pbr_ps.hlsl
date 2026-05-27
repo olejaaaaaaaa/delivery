@@ -2,6 +2,7 @@ static const float PI = 3.14159265359;
 
 [[vk::binding(0, 0)]] Texture2D Textures[];
 [[vk::binding(1, 0)]] SamplerState tex_sampler;
+[[vk::binding(0, 3)]] TextureCube sky_cube;
 
 [[vk::push_constant]] struct Push {
     uint tex_idx[8];    
@@ -25,10 +26,10 @@ static const float3 LIGHT_POSITIONS[4] = {
 };
 
 static const float3 LIGHT_COLORS[4] = {
-    float3(15000.0, 30000.0, 30000.0),
-    float3(30000.0, 15000.0, 30000.0),
-    float3(15000.0, 30000.0, 30000.0),
-    float3(30000.0, 30000.0, 15000.0)
+    float3(1500.0, 3000.0, 3000.0),
+    float3(3000.0, 1500.0, 3000.0),
+    float3(1500.0, 3000.0, 3000.0),
+    float3(3000.0, 3000.0, 1500.0)
 };
 
 float3 getNormalFromMap(VSOutput input, Texture2D normal_tex) {
@@ -105,10 +106,16 @@ float4 main(VSOutput input) : SV_TARGET {
         Lo += (kD * albedo / PI + specular) * radiance * NdotL;
     }
 
-    float3 ambient = float3(0.03, 0.03, 0.03) * albedo * ao;
+    float3 ambient = float3(0.08, 0.08, 0.08) * albedo * ao;
+
+    // float3 irradiance = sky_cube.SampleLevel(tex_sampler, N, 4.0).rgb;
+    // irradiance = max(irradiance, float3(0.03, 0.03, 0.03)); // floor
+    // float3 ambient = kD_ibl * irradiance * albedo * ao;
+    // float3 ambient = kD_ibl * irradiance * albedo * ao;
+
     float3 color   = ambient + Lo;
     color = (color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14);
     color = pow(color, 1.0 / 2.2);
 
-    return float4(color, 1.0);
+    return float4(color, input.base_color.a);
 }
