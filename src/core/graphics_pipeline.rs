@@ -25,6 +25,7 @@ pub struct GraphicsPipelineBuilder<'n> {
     dynamic_state: Option<Vec<vk::DynamicState>>,
     vertex_shader: Option<vk::ShaderModule>,
     fragment_shader: Option<vk::ShaderModule>,
+    dynamic_rendering: Option<vk::PipelineRenderingCreateInfoKHR<'n>>
 }
 
 impl<'n> GraphicsPipelineBuilder<'n> {
@@ -43,6 +44,7 @@ impl<'n> GraphicsPipelineBuilder<'n> {
             rasterization: None,
             fragment_shader: None,
             vertex_shader: None,
+            dynamic_rendering: None,
             scissors: None,
             viewport: None,
             dynamic_state: None,
@@ -52,6 +54,11 @@ impl<'n> GraphicsPipelineBuilder<'n> {
     #[allow(dead_code)]
     pub fn cache(mut self, cache: vk::PipelineCache) -> Self {
         self.cache = Some(cache);
+        self
+    }
+
+    pub fn dynamic_rendering(mut self, dynamic_rendering: vk::PipelineRenderingCreateInfoKHR<'n>) -> Self {
+        self.dynamic_rendering = Some(dynamic_rendering);
         self
     }
 
@@ -193,7 +200,6 @@ impl<'n> GraphicsPipelineBuilder<'n> {
         let multisampling = self.multisampling_info.unwrap();
         let color_blend = self.color_blending_info.unwrap();
         let layout = self.pipeline_layout.unwrap();
-        let render_pass = self.render_pass.unwrap();
 
         let depth_stencil_state = self.depth_stencil.unwrap_or(
             vk::PipelineDepthStencilStateCreateInfo::default()
@@ -213,8 +219,15 @@ impl<'n> GraphicsPipelineBuilder<'n> {
             .multisample_state(&multisampling)
             .color_blend_state(&color_blend)
             .depth_stencil_state(&depth_stencil_state)
-            .layout(layout)
-            .render_pass(render_pass);
+            .layout(layout);
+
+        let mut dynamic_rendering = self.dynamic_rendering.unwrap_or(vk::PipelineRenderingCreateInfo::default());
+
+        create_info = if let Some(render_pass) = self.render_pass {
+            create_info.render_pass(render_pass)
+        } else {
+            create_info.push_next(&mut dynamic_rendering)
+        };
 
         let pipeline = unsafe {
             profiling::scope!("vkCreateGraphicsPipelines");

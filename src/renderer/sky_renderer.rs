@@ -131,7 +131,7 @@ impl SkyRenderer {
                 pre_exposure: f32
             }
 
-            let t = self.time.elapsed().as_secs_f32() * 0.2;
+            let t = self.time.elapsed().as_secs_f32() * 0.01;
             let dir = glam::Vec3::new(t.cos(), t.sin().abs(), 0.0).normalize();
 
             let k = 12.0;

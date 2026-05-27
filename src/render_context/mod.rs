@@ -116,6 +116,7 @@ impl RenderContext {
             .build()?;
 
         let mut image_views = vec![];
+        let mut swapchain_images = vec![];
 
         for i in swapchain.get_swapchain_images().unwrap() {
             image_views.push(
@@ -132,6 +133,8 @@ impl RenderContext {
                     .view_type(vk::ImageViewType::TYPE_2D)
                     .build()?,
             );
+
+            swapchain_images.push(i);
         }
 
         let mut frame_buffers = vec![];
@@ -161,6 +164,7 @@ impl RenderContext {
 
         Ok(Arc::new(Self {
             window: RwLock::new(WindowManager {
+                swapchain_images,
                 resolution: caps.current_extent,
                 frame_sync,
                 image_views,

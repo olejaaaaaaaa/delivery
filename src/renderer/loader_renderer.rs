@@ -119,11 +119,16 @@ impl LoaderRenderer {
             .vertex_attribute_descriptions(&attrs)
             .vertex_binding_descriptions(&binds);
 
+        let dynamic_rendering = vk::PipelineRenderingCreateInfoKHR::default()
+            .color_attachment_formats(std::slice::from_ref(&vk::Format::R8G8B8A8_SRGB))
+            .depth_attachment_format(vk::Format::D32_SFLOAT);
+
         let pipeline = GraphicsPipelineBuilder::new(&ctx.device)
             .depth_stencil(depth_stencil)
             .vertex_shader(vertex.raw)
             .fragment_shader(fragment.raw)
-            .render_pass(ctx.window.read().render_pass.raw)
+            .dynamic_rendering(dynamic_rendering)
+            //.render_pass(ctx.window.read().render_pass.raw)
             .pipeline_layout(layout.raw)
             .viewport(vec![vk::Viewport::default()
                 .x(0.0)

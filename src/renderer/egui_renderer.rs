@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use ash::vk;
 use egui::{Context, TextureId, ViewportId};
-use egui_ash_renderer::{Options, Renderer};
+use egui_ash_renderer::{DynamicRendering, Options, Renderer};
 use egui_winit::State;
 use winit::{event::WindowEvent, window::Window};
 
@@ -39,7 +39,10 @@ impl EguiRenderer {
             &ctx.device.instance.raw,
             ctx.device.phys_dev.raw,
             ctx.device.raw.clone(),
-            ctx.window.read().render_pass.raw,
+            DynamicRendering {
+                color_attachment_format: vk::Format::R8G8B8A8_SRGB,
+                depth_attachment_format: Some(vk::Format::D32_SFLOAT)
+            },
             Options {
                 srgb_framebuffer: true,
                 ..Default::default()

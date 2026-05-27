@@ -31,7 +31,7 @@ smol = "2.0.2"
 
 rapier3d = "0.32.0"
 
-egui-ash-renderer = "0.11.0"
+egui-ash-renderer = { version = "0.11.0", features = ["dynamic-rendering"] }
 egui = "0.33"
 egui-winit = "0.33"
 egui_demo_lib = "0.33"

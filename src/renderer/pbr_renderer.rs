@@ -84,10 +84,15 @@ impl PbrRenderer {
             .vertex_binding_descriptions(&binds)
             .vertex_attribute_descriptions(&attrs);
 
+        let dynamic_rendering = vk::PipelineRenderingCreateInfoKHR::default()
+            .color_attachment_formats(std::slice::from_ref(&vk::Format::R8G8B8A8_SRGB))
+            .depth_attachment_format(vk::Format::D32_SFLOAT);
+
         let pipeline = GraphicsPipelineBuilder::new(&ctx.device)
+            .dynamic_rendering(dynamic_rendering)
             .vertex_shader(vertex.raw)
             .fragment_shader(fragment.raw)
-            .render_pass(ctx.window.read().render_pass.raw)
+            //.render_pass(ctx.window.read().render_pass.raw)
             .pipeline_layout(layout.raw)
             .depth_stencil(
                 vk::PipelineDepthStencilStateCreateInfo::default()

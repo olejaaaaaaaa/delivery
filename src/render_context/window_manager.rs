@@ -10,6 +10,7 @@ use crate::core::{
 /// Manages window-related Vulkan resources (swapchain, framebuffers,
 /// etc.) Handles window resizing and frame synchronization
 pub struct WindowManager {
+    pub(crate) swapchain_images: Vec<vk::Image>,
     /// Current window/swapchain resolution
     pub(crate) resolution: vk::Extent2D,
     /// Synchronization objects for each frame in flight
@@ -100,6 +101,7 @@ impl WindowManager {
             .build()?;
 
         let mut image_views = vec![];
+        let mut swapchain_images = vec![];
 
         for i in swapchain.get_swapchain_images()? {
             let image_view = ImageViewBuilder::new(device)
@@ -114,7 +116,9 @@ impl WindowManager {
                 })
                 .view_type(vk::ImageViewType::TYPE_2D)
                 .build()?;
+
             image_views.push(image_view);
+            swapchain_images.push(i);
         }
 
         let mut frame_buffers = vec![];
@@ -150,6 +154,8 @@ impl WindowManager {
 
         self.swapchain.destroy();
         self.swapchain = swapchain;
+
+        self.swapchain_images = swapchain_images;
 
         self.resolution = caps.current_extent;
 

@@ -63,59 +63,79 @@ impl WorldRenderer {
         let resolution = self.ctx.resolution();
         self.camera.update(dt, resolution.width as f32 / resolution.height as f32);
 
+
         self.render_loop.draw(&self.ctx, |frame| {
 
-            //if self.sky_renderer.sky_rendered_once {
-                //let time = Instant::now();
+            transition_image_layout(&frame,
+                self.sky_renderer.cube_map.image.raw,
+                vk::ImageLayout::UNDEFINED,
+                vk::ImageLayout::GENERAL,
+            );
 
-                transition_image_layout(&frame,
-                    self.sky_renderer.cube_map.image.raw,
-                    vk::ImageLayout::UNDEFINED,
-                    vk::ImageLayout::GENERAL,
-                );
+            self.sky_renderer.dispatch_sky(&frame);
 
-                self.sky_renderer.dispatch_sky(&frame);
+            transition_image_layout(&frame,
+                self.sky_renderer.cube_map.image.raw,
+                vk::ImageLayout::GENERAL,
+                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            );
 
-                transition_image_layout(&frame,
-                    self.sky_renderer.cube_map.image.raw,
-                    vk::ImageLayout::GENERAL,
-                    vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                );
-                self.sky_renderer.sky_rendered_once = true;
-                //println!("skybox time: {:?}", time.elapsed().as_secs_f32());
-            //}
+            let clear_values = vec![
+                vk::ClearValue {
+                    color: vk::ClearColorValue {
+                        float32: [0.0, 0.0, 0.0, 1.0],
+                    },
+                },
+                vk::ClearValue {
+                    depth_stencil: vk::ClearDepthStencilValue {
+                        depth: 1.0,
+                        stencil: 0,
+                    },
+                }
+            ];
+
+            transition_image_layout2(
+                &frame,
+                frame.window.swapchain_images[frame.image_index as usize],
+                vk::ImageLayout::UNDEFINED,
+                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            );
+
+            transition_image_layout2(
+                &frame,
+                frame.window.depth_image.raw,
+                vk::ImageLayout::UNDEFINED,
+                vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            );
 
             unsafe {
-                let clear_values = vec![
-                    vk::ClearValue {
-                        color: vk::ClearColorValue {
-                            float32: [0.0, 0.0, 0.0, 1.0],
-                        },
-                    },
-                    vk::ClearValue {
-                        depth_stencil: vk::ClearDepthStencilValue {
-                            depth: 1.0,
-                            stencil: 0,
-                        },
-                    }
-                ];
 
-                let frame_buffer = frame.window.frame_buffers[frame.image_index as usize].raw;
+                let swapchain_view = &frame.window.image_views[frame.image_index as usize];
 
-                let render_pass_begin_info = vk::RenderPassBeginInfo::default()
-                    .render_pass(frame.window.render_pass.raw)
-                    .framebuffer(frame_buffer)
+                let color_attach = vk::RenderingAttachmentInfoKHR::default()
+                    .load_op(vk::AttachmentLoadOp::LOAD)
+                    .store_op(vk::AttachmentStoreOp::STORE)
+                    .image_view(swapchain_view.raw)
+                    .clear_value(clear_values[0])
+                    .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
+
+                let depth_attach = vk::RenderingAttachmentInfoKHR::default()
+                    .load_op(vk::AttachmentLoadOp::CLEAR)
+                    .store_op(vk::AttachmentStoreOp::DONT_CARE)
+                    .image_view(frame.window.depth_view.raw)
+                    .clear_value(clear_values[1])
+                    .image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+
+                let render_info = vk::RenderingInfoKHR::default()
                     .render_area(vk::Rect2D {
                         offset: vk::Offset2D { x: 0, y: 0 },
                         extent: frame.window.resolution
                     })
-                    .clear_values(&clear_values);
+                    .depth_attachment(&depth_attach)
+                    .color_attachments(std::slice::from_ref(&color_attach))
+                    .layer_count(1);
 
-                frame.device.cmd_begin_render_pass(
-                    frame.cmd,
-                    &render_pass_begin_info,
-                    vk::SubpassContents::INLINE,
-                );
+                frame.device.cmd_begin_rendering(frame.cmd, &render_info);
             }
 
             if track.model.is_none() || !self.is_run {
@@ -150,8 +170,15 @@ impl WorldRenderer {
             }
 
             unsafe {
-                frame.device.cmd_end_render_pass(frame.cmd);
+                frame.device.cmd_end_rendering(frame.cmd);
             }
+
+            transition_image_layout2(
+                &frame,
+                frame.window.swapchain_images[frame.image_index as usize],
+                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                vk::ImageLayout::PRESENT_SRC_KHR,
+            );   
 
         }).unwrap();
     }
@@ -177,6 +204,80 @@ impl WorldRenderer {
             }
             _ => {},
         }
+    }
+}
+
+fn transition_image_layout2(
+    frame: &FrameContext<'_>,
+    image: vk::Image,
+    old_layout: vk::ImageLayout,
+    new_layout: vk::ImageLayout,
+) {
+    let barrier = vk::ImageMemoryBarrier::default()
+        .image(image)
+        .old_layout(old_layout)
+        .new_layout(new_layout)
+        .src_access_mask(get_access_mask(old_layout))
+        .dst_access_mask(get_access_mask(new_layout))
+        .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+        .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+        .subresource_range(
+            vk::ImageSubresourceRange::default()
+                .aspect_mask(match new_layout {
+                    vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL => 
+                        vk::ImageAspectFlags::DEPTH,
+                    _ => vk::ImageAspectFlags::COLOR,
+                })
+                .base_mip_level(0)
+                .level_count(1)
+                .base_array_layer(0)
+                .layer_count(1),
+        );
+
+    let src_stage = get_pipeline_stage(old_layout);
+    let dst_stage = get_pipeline_stage(new_layout);
+
+    unsafe {
+        frame.device.cmd_pipeline_barrier(
+            frame.cmd,
+            src_stage,
+            dst_stage,
+            vk::DependencyFlags::empty(),
+            &[],
+            &[],
+            &[barrier],
+        );
+    }
+}
+
+fn get_access_mask(layout: vk::ImageLayout) -> vk::AccessFlags {
+    match layout {
+        vk::ImageLayout::UNDEFINED => vk::AccessFlags::NONE,
+        vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL => 
+            vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+        vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL => 
+            vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
+        vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL => 
+            vk::AccessFlags::SHADER_READ,
+        vk::ImageLayout::TRANSFER_DST_OPTIMAL => 
+            vk::AccessFlags::TRANSFER_WRITE,
+        vk::ImageLayout::PRESENT_SRC_KHR => vk::AccessFlags::NONE,
+        _ => vk::AccessFlags::NONE,
+    }
+}
+
+fn get_pipeline_stage(layout: vk::ImageLayout) -> vk::PipelineStageFlags {
+    match layout {
+        vk::ImageLayout::UNDEFINED => vk::PipelineStageFlags::TOP_OF_PIPE,
+        vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL => 
+            vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+        vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL => 
+            vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
+        vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL => 
+            vk::PipelineStageFlags::FRAGMENT_SHADER,
+        vk::ImageLayout::PRESENT_SRC_KHR => 
+            vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+        _ => vk::PipelineStageFlags::ALL_COMMANDS,
     }
 }
 

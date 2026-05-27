@@ -82,6 +82,7 @@ impl Device {
 
         let required_extensions = [
             c"VK_KHR_swapchain",
+            c"VK_KHR_dynamic_rendering",
             c"VK_EXT_descriptor_indexing",
             c"VK_KHR_driver_properties",
             c"VK_KHR_imageless_framebuffer",
@@ -206,6 +207,9 @@ impl Device {
             .descriptor_binding_sampled_image_update_after_bind(true)
             .runtime_descriptor_array(true);
 
+        let mut dynamic_rendering = vk::PhysicalDeviceDynamicRenderingFeatures::default()
+            .dynamic_rendering(true);
+
         let mut imageleass_framebuffer =
             vk::PhysicalDeviceImagelessFramebufferFeatures::default().imageless_framebuffer(true);
 
@@ -213,7 +217,8 @@ impl Device {
             .queue_create_infos(&queue_infos)
             .enabled_extension_names(&p_extensions)
             .push_next(&mut descriptor_indexing)
-            .push_next(&mut imageleass_framebuffer);
+            .push_next(&mut imageleass_framebuffer)
+            .push_next(&mut dynamic_rendering);
 
         let device = unsafe {
             profiling::scope!("vkCreateDevice");
