@@ -98,6 +98,15 @@ float3 IntegrateOpticalDepth(float3 rayStart, float3 rayDir)
     return opticalDepth;
 }
 
+float3 SunDisk(float3 wi, float3 lightDir)
+{
+    float cosAngle = dot(wi, lightDir);
+    float sunAngularRadius = 0.00465; // ~0.267 градуса
+    float edge = 0.01; // мягкость края
+    float disk = smoothstep(cos(sunAngularRadius + edge), cos(sunAngularRadius), cosAngle);
+    return disk * float3(10.0 * 2.0, 9.0 * 2.0, 7.0 * 2.0); // цвет и яркость
+}
+
 float3 IntegrateScattering(float3 rayStart, float3 rayDir, float rayLength,
                             float3 lightDir, float3 lightColor,
                             out float3 transmittance)
@@ -115,9 +124,9 @@ float3 IntegrateScattering(float3 rayStart, float3 rayDir, float rayLength,
 
     float costh  = dot(rayDir, lightDir);
     float phaseR = PhaseRayleigh(costh);
-    float phaseM = PhaseMie(costh, 0.85);
+    float phaseM = PhaseMie(costh, 0.90);
 
-    const int sampleCount = 6;
+    const int sampleCount = 32;
 
     float3 opticalDepth = float3(0.0, 0.0, 0.0);
     float3 rayleigh     = float3(0.0, 0.0, 0.0);
@@ -160,7 +169,7 @@ float3 atmosphere_default(float3 wi, float3 light_dir)
         float3(1.0, 1.0, 1.0),
         transmittance);
 
-    return (frame_constants.sky_ambient.rgb
+    return (frame_constants.sky_ambient.rgb + SunDisk(wi, light_dir)
           + frame_constants.sun_color_multiplier.rgb * scatter)
          * frame_constants.pre_exposure;
 }
@@ -178,7 +187,7 @@ static const float3x3 CUBE_MAP_FACE_ROTATIONS[6] = {
 void main(in uint3 px : SV_DispatchThreadID)
 {
     uint   face = px.z;
-    float2 uv   = ((float2)px.xy + 0.5) / 64.0;
+    float2 uv   = ((float2)px.xy + 0.5) / 128.0;
     float3 dir  = normalize(mul(CUBE_MAP_FACE_ROTATIONS[face], float3(uv * 2.0 - 1.0, -1.0)));
 
     float3 color = atmosphere_default(dir, frame_constants.sun_direction);

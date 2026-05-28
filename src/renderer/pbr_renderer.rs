@@ -258,6 +258,45 @@ impl PbrRenderer {
                         frame.device.cmd_draw_indexed(frame.cmd, mesh.index_count, 1, 0, 0, 0);
                     }
                 }
+
+                for model in &car.wheels {
+
+                    frame.device.cmd_bind_descriptor_sets(
+                        frame.cmd, 
+                        vk::PipelineBindPoint::GRAPHICS, 
+                        self.layout.raw, 
+                        0, 
+                        &[bindless.set, model.set, camera.set], 
+                        &[]
+                    );
+                    
+                    let mut push = Push::default();
+
+                    for (index, (mesh, material)) in model.model.meshes.iter().enumerate() {
+
+                        push.user_data[0] = 0.0;
+                        push.user_data[1] = 15.0;
+                        push.user_data[2] = 15.0;
+                        push.user_data[3] = index as f32;
+
+                        push.tex_idx[0] = material.diffuse_map;
+                        push.tex_idx[1] = material.metallic_roughness_map;
+                        push.tex_idx[2] = material.occlusion_map;
+                        push.tex_idx[3] = material.normal_map;
+
+                        frame.device.cmd_push_constants(
+                            frame.cmd,
+                            self.layout.raw,
+                            vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                            0,
+                            bytemuck::bytes_of(&push),
+                        );
+
+                        frame.device.cmd_bind_vertex_buffers(frame.cmd, 0, &[mesh.vertex_buffer.raw], &[0]);
+                        frame.device.cmd_bind_index_buffer(frame.cmd, mesh.index_buffer.raw, 0, vk::IndexType::UINT32);
+                        frame.device.cmd_draw_indexed(frame.cmd, mesh.index_count, 1, 0, 0, 0);
+                    }
+                }
             }
         }
 

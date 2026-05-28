@@ -19,6 +19,8 @@ pub struct Camera {
     pub buffer: GpuBuffer,
     move_speed: f32,
     mouse_sensitivity: f32,
+    pub(crate) camera_pitch: f32,
+    pub(crate) camera_yaw_offset: f32,   
     // состояние клавиш
     forward: bool,
     backward: bool,
@@ -40,20 +42,19 @@ pub struct CameraData {
 impl Camera {
     pub fn new(ctx: &Arc<RenderContext>, res: &Arc<Resources>) -> VulkanResult<Self> {
         let rig = CameraRig::builder()
-            .with(Position::new(mint::Point3 { x: 0.0, y: 0.0, z: 0.0 }))
+            .with(Position::new(mint::Point3 { x: 0.0, y: 0.0, z: 10.0 }))
             .with(Rotation::new(mint::Quaternion { 
                 v: Vector3::from_slice(&[0.0, 0.0, 0.0]),
                 s: 0.0
             }))
-            .with(YawPitch::new().yaw_degrees(45.0).pitch_degrees(-30.0))
-            //.with(Smooth::new_position(1.25).predictive(true))
-            //.with(Arm::new(mint::Point3 { x: 0.0, y: 1.5, z: -6.5 }))
-            // .with(Smooth::new_position(2.5))
-            // .with(
-            //     LookAt::new(mint::Point3 { x: 0.0, y: 1.0, z: 0.0 })
-            //         .tracking_smoothness(1.25)
-            //         .tracking_predictive(true),
-            // )
+            .with(YawPitch::new().yaw_degrees(0.0).pitch_degrees(-15.0))
+            .with(Smooth::new_position(1.25).predictive(true))
+            .with(Arm::new(mint::Point3 { x: 0.0, y: 1.5, z: -6.5 }))
+            .with(
+                LookAt::new(mint::Point3 { x: 0.0, y: 1.0, z: 0.0 })
+                    .tracking_smoothness(1.25)
+                    .tracking_predictive(true),
+            )
             .build();
 
         let buffer = GpuBufferBuilder::cpu_only(&ctx.device)
@@ -95,6 +96,8 @@ impl Camera {
             set,
             rig,
             buffer,
+            camera_yaw_offset: 0.0,
+            camera_pitch: 0.0,
             last_data: CameraData::zeroed(),
             move_speed: 5.0,
             mouse_sensitivity: 0.1,
@@ -121,11 +124,10 @@ impl Camera {
 
     pub fn handle_device_event(&mut self, event: &DeviceEvent) {
         if let DeviceEvent::MouseMotion { delta: (dx, dy) } = event {
-            self.rig.driver_mut::<YawPitch>()
-                .rotate_yaw_pitch(
-                    -(*dx as f32) * self.mouse_sensitivity,
-                    -(*dy as f32) * self.mouse_sensitivity,
-                );
+            self.camera_yaw_offset += -(*dx as f32) * self.mouse_sensitivity;
+            self.camera_pitch      += -(*dy as f32) * self.mouse_sensitivity;
+            self.camera_pitch = self.camera_pitch.clamp(-2.0, 15.0);
+            self.camera_yaw_offset = self.camera_yaw_offset.clamp(-60.0, 60.0);
         }
     }
 

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, hash::Hasher, sync::Arc, time::Instant};
+use std::{collections::HashMap, hash::Hasher, sync::Arc, time::{Duration, Instant}};
 use ash::vk;
 use glam::{Mat4, Quat, Vec3};
 use rapier3d::{dynamics::{GenericJointBuilder, ImpulseJointHandle, ImpulseJointSet, JointAxesMask, JointAxis, RigidBodyBuilder, RigidBodyHandle, RigidBodySet}, geometry::{ColliderBuilder, InteractionGroups}};
@@ -9,6 +9,7 @@ use super::super::render_context::RenderContext;
 
 pub struct WorldRenderer {
     pub(crate) is_run: bool,
+    pub(crate) global_time: Instant,
     pub(crate) debug_ui_enable: bool,
     pub(crate) camera: Camera,
     pub(crate) render_loop: RenderLoop,
@@ -34,6 +35,7 @@ impl WorldRenderer {
 
         Ok(Self { 
             is_run: false,
+            global_time: Instant::now().checked_add(Duration::from_secs_f32(1.0)).unwrap(),
             debug_ui_enable: false,
             loader2_renderer: Loader2Renderer::new(&ctx)?,
             loader_renderer: LoaderRenderer::new(&ctx, &res)?,
@@ -63,22 +65,24 @@ impl WorldRenderer {
         let resolution = self.ctx.resolution();
         self.camera.update(dt, resolution.width as f32 / resolution.height as f32);
 
-
         self.render_loop.draw(&self.ctx, |frame| {
 
-            transition_image_layout(&frame,
-                self.sky_renderer.cube_map.image.raw,
-                vk::ImageLayout::UNDEFINED,
-                vk::ImageLayout::GENERAL,
-            );
+            if !self.sky_renderer.sky_rendered_once {
+                transition_image_layout(&frame,
+                    self.sky_renderer.cube_map.image.raw,
+                    vk::ImageLayout::UNDEFINED,
+                    vk::ImageLayout::GENERAL,
+                );
 
-            self.sky_renderer.dispatch_sky(&frame);
+                self.sky_renderer.dispatch_sky(&frame);
 
-            transition_image_layout(&frame,
-                self.sky_renderer.cube_map.image.raw,
-                vk::ImageLayout::GENERAL,
-                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-            );
+                transition_image_layout(&frame,
+                    self.sky_renderer.cube_map.image.raw,
+                    vk::ImageLayout::GENERAL,
+                    vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                );
+                self.sky_renderer.sky_rendered_once = true;
+            }
 
             let clear_values = vec![
                 vk::ClearValue {

@@ -66,18 +66,20 @@ impl Loader2Renderer {
             .depth_stencil(depth_stencil)
             .vertex_shader(vertex.raw)
             .fragment_shader(fragment.raw)
-            //.render_pass(ctx.window.read().render_pass.raw)
             .pipeline_layout(layout.raw)
             .viewport(vec![vk::Viewport::default()
                 .x(0.0)
                 .y(0.0)
-                .width(resolution.width as f32)
-                .height(resolution.height as f32)
+                .width(0.0 as f32)
+                .height(0.0 as f32)
                 .min_depth(0.0)
                 .max_depth(1.0)])
             .scissors(vec![vk::Rect2D::default()
                 .offset(vk::Offset2D { x: 0, y: 0 })
-                .extent(resolution)])
+                .extent(vk::Extent2D {
+                    width: 0,
+                    height: 0
+                })])
             .input_assembly(
                 vk::PipelineInputAssemblyStateCreateInfo::default()
                     .topology(vk::PrimitiveTopology::TRIANGLE_LIST)

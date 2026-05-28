@@ -1,12 +1,33 @@
 use std::time::Instant;
 
-use dolly::drivers::{LookAt, Position, Rotation};
+use dolly::drivers::{LookAt, Position, Rotation, YawPitch};
 use glam::Vec3;
 use mint::Point3;
-use winit::{event::{KeyEvent, WindowEvent}, event_loop::ActiveEventLoop, keyboard::{KeyCode, PhysicalKey}, window::{CursorGrabMode, Window, WindowId}};
+use rapier3d::dynamics::ImpulseJoint;
+use rodio::cpal::FromSample;
+use winit::{event::{ElementState, KeyEvent, WindowEvent}, event_loop::ActiveEventLoop, keyboard::{KeyCode, PhysicalKey}, window::{CursorGrabMode, Window, WindowId}};
 use crate::{Car, PhysicsEngine, Track, WorldRenderer, open_vfs, play_music};
 
+struct InputState {
+    w_pressed: bool,
+    s_pressed: bool,
+    a_pressed: bool,
+    d_pressed: bool,
+}
+
+impl Default for InputState {
+    fn default() -> Self {
+        Self {
+            w_pressed: false,
+            s_pressed: false,
+            a_pressed: false,
+            d_pressed: false,
+        }
+    }
+}
+
 pub struct GameRenderer {
+    input_state: InputState,
     last_time: Instant,
     renderer: WorldRenderer,
     car: Car,
@@ -26,6 +47,7 @@ impl GameRenderer {
         let car = Car::new(&world, &mut physics).unwrap();
 
         Self { 
+            input_state: InputState::default(),
             last_time: Instant::now(),
             car,
             track,
@@ -40,6 +62,18 @@ impl GameRenderer {
                 if event.physical_key == PhysicalKey::Code(KeyCode::Escape) {
                     event_loop.exit();
                 }
+
+                   // Определяем, нажата или отпущена клавиша
+                let pressed = event.state == ElementState::Pressed;
+                
+                // Обновляем состояние
+                match event.physical_key {
+                    PhysicalKey::Code(KeyCode::KeyW) => self.input_state.w_pressed = pressed,
+                    PhysicalKey::Code(KeyCode::KeyS) => self.input_state.s_pressed = pressed,
+                    PhysicalKey::Code(KeyCode::KeyA) => self.input_state.a_pressed = pressed,
+                    PhysicalKey::Code(KeyCode::KeyD) => self.input_state.d_pressed = pressed,
+                    _ => {}
+                }
             },
             WindowEvent::Resized(size) => {
                 let (width, height) = (size.width, size.height);
@@ -50,37 +84,64 @@ impl GameRenderer {
                 let dt = self.last_time.elapsed().as_secs_f32();
                 self.last_time = Instant::now();
 
-            //    if let Some(_) = &self.car.car_body {
-            //         let camera = &mut self.renderer.camera;
-            //         camera.rig.driver_mut::<Position>().position = Point3 {
-            //             x: self.car.position.x,
-            //             y: self.car.position.y,
-            //             z: self.car.position.z,
-            //         };
-            //         camera.rig.driver_mut::<Rotation>().rotation = mint::Quaternion {
-            //             v: mint::Vector3 {
-            //                 x: self.car.rotation.x,
-            //                 y: self.car.rotation.y,
-            //                 z: self.car.rotation.z,
-            //             },
-            //             s: self.car.rotation.w,
-            //         };
-            //         camera.rig.driver_mut::<LookAt>().target = Point3 {
-            //             x: (self.car.position.x + Vec3::Y.x),
-            //             y: (self.car.position.y + Vec3::Y.y),
-            //             z: (self.car.position.z + Vec3::Y.z),
-            //         };
-            //     }
+               if let Some(_) = &self.car.car_body {
+
+                    self.renderer.camera.rig.driver_mut::<Position>().position = Point3 {
+                        x: self.car.position.x,
+                        y: self.car.position.y,
+                        z: self.car.position.z,
+                    };
+
+                    // Извлекаем yaw из кватерниона машины
+                    let car_quat = glam::Quat::from_xyzw(
+                        self.car.rotation.x,
+                        self.car.rotation.y,
+                        self.car.rotation.z,
+                        self.car.rotation.w,
+                    );
+                    let (car_yaw, _, _) = car_quat.to_euler(glam::EulerRot::YXZ);
+                    let car_yaw_deg = car_yaw.to_degrees();
+
+                    // YawPitch = yaw машины + offset мыши
+                    let yaw_pitch = self.renderer.camera.rig.driver_mut::<YawPitch>();
+                    yaw_pitch.yaw_degrees   = car_yaw_deg + self.renderer.camera.camera_yaw_offset;
+                    yaw_pitch.pitch_degrees = self.renderer.camera.camera_pitch;
+
+                    // LookAt чуть выше центра машины
+                    self.renderer.camera.rig.driver_mut::<LookAt>().target = Point3 {
+                        x: self.car.position.x,
+                        y: self.car.position.y + 1.0,
+                        z: self.car.position.z,
+                    };
+                }
+
+                
+                let mut thrust = 0.0;
+                let mut steering = 0.0;
+                
+                // W/S - тяга
+                if self.input_state.w_pressed {
+                    thrust = -1.4; // вперед
+                } else if self.input_state.s_pressed {
+                    thrust = 1.4;  // назад
+                }
+                // Если нажаты обе или ни одной - thrust = 0.0
+                
+                // A/D - поворот (только если есть thrust, иначе поворачиваться не будет)
+                if self.input_state.a_pressed {
+                    steering = 1.1; // поворот налево (отрицательный угол)
+                } else if self.input_state.d_pressed {
+                    steering = -1.1;  // поворот направо (положительный угол)
+                }
 
                 if self.track.model.is_some() {
 
-                    let t = std::time::Instant::now();
                     self.physics.update(dt);
-                    //println!("physics: {}ms", t.elapsed().as_millis());
-
-                    let t = std::time::Instant::now();
                     self.car.sync_transforms(&self.physics);
-                    //println!("sync: {}ms", t.elapsed().as_millis());
+                    self.car.update_motors(&mut self.physics.impulse, thrust, steering);
+                    
+                    
+
                 }
 
                 self.track.load_if_finish(&self.renderer, &mut self.physics);

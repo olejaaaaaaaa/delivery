@@ -53,7 +53,7 @@ impl SkyRenderer {
 
         let (compute_set, fragment_set) = (sets[0], sets[1]);
     
-        let (array_map, cube_map) = Texture::cube_pairs(ctx, vk::Format::R32G32B32A32_SFLOAT, 64, 64)?;
+        let (array_map, cube_map) = Texture::cube_pairs(ctx, vk::Format::R32G32B32A32_SFLOAT, 128, 128)?;
 
         unsafe {
 
@@ -110,7 +110,7 @@ impl SkyRenderer {
         })
     }
 
-    pub fn dispatch_sky(&self, frame: &FrameContext ) {
+    pub fn dispatch_sky(&self, frame: &FrameContext) {
         unsafe {
             frame.device.cmd_bind_pipeline(frame.cmd, vk::PipelineBindPoint::COMPUTE, self.pipeline.raw);
             frame.device.cmd_bind_descriptor_sets(
@@ -131,17 +131,17 @@ impl SkyRenderer {
                 pre_exposure: f32
             }
 
-            let t = self.time.elapsed().as_secs_f32() * 0.01;
+            let t = self.time.elapsed().as_secs_f32();
             let dir = glam::Vec3::new(t.cos(), t.sin().abs(), 0.0).normalize();
 
             let k = 12.0;
 
             let push = FrameConstants {
                 sky_ambient: [0.0, 0.0, 0.0, 0.0],
-                sun_color_multiplier: [k, 0.95 * k, 0.8 * k, 0.0],
+                sun_color_multiplier: [k, 0.85 * k, 0.8 * k, 0.0],
                 pre_exposure: 1.0,
-                sun_direction: dir.to_array(),
-                //sun_direction: [0.0, 0.05712185, 0.98968582],
+                //sun_direction: dir.to_array(),
+                sun_direction: [0.0, 0.55712185, 0.18968582],
             };
 
             //println!("sun dir: {:?}", dir);
@@ -154,7 +154,7 @@ impl SkyRenderer {
                 bytemuck::bytes_of(&push),
             );
 
-            frame.device.cmd_dispatch(frame.cmd, 64, 64, 6);
+            frame.device.cmd_dispatch(frame.cmd, 128, 128, 6);
         }
     }
 

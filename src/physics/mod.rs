@@ -10,7 +10,7 @@ pub struct PhysicsEngine {
     island_manager: IslandManager,
     broad_phase: BroadPhaseBvh,
     narrow_phase: NarrowPhase,
-    impulse: ImpulseJointSet,
+    pub impulse: ImpulseJointSet,
     multi: MultibodyJointSet,
     ccd_solver: CCDSolver,
 }
