@@ -182,7 +182,7 @@ impl PbrRenderer {
                     vk::PipelineBindPoint::GRAPHICS, 
                     self.layout.raw, 
                     0, 
-                    &[bindless.set, track.set.unwrap(), camera.set, sky.sampled_cude_set], 
+                    &[bindless.set, track.set.unwrap(), camera.sets[(frame.window.current_frame + 1) % frame.device.frame_in_flight], sky.sampled_cude_set], 
                     &[]
                 );
 
@@ -227,7 +227,7 @@ impl PbrRenderer {
                         vk::PipelineBindPoint::GRAPHICS, 
                         self.layout.raw, 
                         0, 
-                        &[bindless.set, car.car_set.as_ref().unwrap()[frame.image_index as usize], camera.set], 
+                        &[bindless.set, car.car_set.as_ref().unwrap()[(frame.window.current_frame + 1) % frame.device.frame_in_flight], camera.sets[(frame.window.current_frame + 1) % frame.device.frame_in_flight]], 
                         &[]
                     );
 
@@ -266,7 +266,7 @@ impl PbrRenderer {
                         vk::PipelineBindPoint::GRAPHICS, 
                         self.layout.raw, 
                         0, 
-                        &[bindless.set, model.set, camera.set], 
+                        &[bindless.set, model.set, camera.sets[(frame.window.current_frame + 1) % frame.device.frame_in_flight]], 
                         &[]
                     );
                     

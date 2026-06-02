@@ -11,6 +11,9 @@ use crate::{core::{CommandPool, CommandPoolBuilder, Queue}, render_context::Rend
 
 pub struct EguiRenderer {
     pub frame_time: f32,
+    pub max_frame_time: f32,
+    pub phys_time: f32,
+    pub phys_max_time: f32,
     pub stats: Vec<(String, f32)>,
     pub pool: CommandPool,
     pub egui_ctx: Context,
@@ -52,6 +55,9 @@ impl EguiRenderer {
         let pool = CommandPoolBuilder::reset(&ctx.device).build().unwrap();
 
         Self { 
+            max_frame_time: 0.0,
+            phys_max_time: 0.0,
+            phys_time: 0.0,
             stats: vec![],
             frame_time: 0.0,
             pool,
@@ -91,6 +97,8 @@ impl EguiRenderer {
                 .default_size([200.0, 100.0]) 
                 .show(ctx,  |ui| {
                     ui.label(format!("frame time: {:?}ms", self.frame_time));
+                    ui.label(format!("phys time: {:?}ms", self.phys_time));
+                    ui.label(format!("max phys time: {:?}ms", self.phys_max_time));
                 });
         });
 

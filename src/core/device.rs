@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::ffi::CStr;
 use std::mem::ManuallyDrop;
+use std::sync::Arc;
 
 use ash::vk;
 use gpu_allocator::vulkan::{Allocator, AllocatorCreateDesc};
@@ -13,7 +14,7 @@ use crate::core::debug;
 
 /// Logical Device for creation and destroy Vulkan Objects
 pub struct Device {
-    pub(crate) allocator: ManuallyDrop<Mutex<Allocator>>,
+    pub allocator: Arc<Mutex<Allocator>>,
     pub(crate) extensions: HashSet<&'static CStr>,
     pub(crate) features2: vk::PhysicalDeviceFeatures2<'static>,
     pub(crate) props2: vk::PhysicalDeviceProperties2<'static>,
@@ -38,7 +39,7 @@ impl Device {
 
     pub fn destroy(&mut self) {
         unsafe {
-            ManuallyDrop::drop(&mut self.allocator);
+            //ManuallyDrop::drop(&mut self.allocator);
             self.raw.destroy_device(None);
             debug!("Device destroyed");
         }
@@ -89,6 +90,7 @@ impl Device {
             c"VK_KHR_buffer_device_address",
             c"VK_KHR_timeline_semaphore",
             c"VK_KHR_device_group",
+            c"VK_KHR_synchronization2"
         ];
 
         for i in required_extensions {
@@ -213,12 +215,16 @@ impl Device {
         let mut imageleass_framebuffer =
             vk::PhysicalDeviceImagelessFramebufferFeatures::default().imageless_framebuffer(true);
 
+        let mut synchronization2 = vk::PhysicalDeviceSynchronization2Features::default()
+            .synchronization2(true);
+
         let create_info = vk::DeviceCreateInfo::default()
             .queue_create_infos(&queue_infos)
             .enabled_extension_names(&p_extensions)
             .push_next(&mut descriptor_indexing)
             .push_next(&mut imageleass_framebuffer)
-            .push_next(&mut dynamic_rendering);
+            .push_next(&mut dynamic_rendering)
+            .push_next(&mut synchronization2);
 
         let device = unsafe {
             profiling::scope!("vkCreateDevice");
@@ -262,7 +268,7 @@ impl Device {
             driver_props,
             props2,
             features2,
-            allocator: ManuallyDrop::new(Mutex::new(allocator)),
+            allocator: Arc::new(Mutex::new(allocator)),
             queue_family_props,
         })
     }

@@ -5,9 +5,12 @@ use rapier3d::{dynamics::{GenericJointBuilder, ImpulseJointHandle, ImpulseJointS
 use winit::{event::{DeviceEvent, KeyEvent, WindowEvent}, event_loop::ActiveEventLoop, keyboard::{KeyCode, PhysicalKey}, window::{Window, WindowId}};
 use crate::{BackgroundUiRenderer, Bindless, Camera, Car, EguiRenderer, GltfModel, Loader2Renderer, LoaderRenderer, Mesh, PbrRenderer, PhysicsEngine, RenderLoop, Resources, SkyRenderer, Texture, Track, core::{DescriptorPool, DescriptorPoolBuilder, DescriptorSetLayout, DescriptorSetLayoutBuilder, Device, GpuBuffer, GpuBufferBuilder, TextureVertex, Vertex, VulkanResult}, load_gltf, open_vfs, render_context::GraphicsDevice, renderer::render_loop::FrameContext};
 
+use frame_graph::*;
+
 use super::super::render_context::RenderContext;
 
 pub struct WorldRenderer {
+    pub(crate) graph: FrameGraph,
     pub(crate) is_run: bool,
     pub(crate) global_time: Instant,
     pub(crate) debug_ui_enable: bool,
@@ -33,7 +36,14 @@ impl WorldRenderer {
         let sky_renderer = SkyRenderer::new(&ctx, &res)?;
         let back_renderer = BackgroundUiRenderer::new(&ctx, &res, &sky_renderer)?;
 
+        let mut graph = FrameGraph::new(&FrameGraphCreateDesc {
+            allocator: ctx.device.allocator.clone(), 
+            frame_in_flight: ctx.frame_in_flight(), 
+            device: ctx.device.raw.clone()
+        });
+
         Ok(Self { 
+            graph,
             is_run: false,
             global_time: Instant::now().checked_add(Duration::from_secs_f32(1.0)).unwrap(),
             debug_ui_enable: false,
@@ -63,126 +73,139 @@ impl WorldRenderer {
         self.egui_renderer.frame_time = dt * 1000.0;
 
         let resolution = self.ctx.resolution();
-        self.camera.update(dt, resolution.width as f32 / resolution.height as f32);
+
+        self.camera.update(dt, resolution.width as f32 / resolution.height as f32, (self.ctx.window.read().current_frame + 1) % self.ctx.device.frame_in_flight);
 
         self.render_loop.draw(&self.ctx, |frame| {
 
+            let mut scope = FrameScope::new(&mut self.graph);
+
+            
+            //let skybox = scope.import( self.sky_renderer.cube_map.image.raw, TextureAccess::Undefined);
+            
             if !self.sky_renderer.sky_rendered_once {
+
+                self.sky_renderer.sky_rendered_once = true;
                 transition_image_layout(&frame,
                     self.sky_renderer.cube_map.image.raw,
                     vk::ImageLayout::UNDEFINED,
                     vk::ImageLayout::GENERAL,
                 );
 
-                self.sky_renderer.dispatch_sky(&frame);
+                // scope.add_pass(
+                //     Pass::new("SkyBox")
+                //         .read(skybox.clone(), TextureAccess::ComputeWrite)
+                //         .execute(|device, cmd, res| {
+                //            
+                //         })
+                // );
+    
+                 self.sky_renderer.dispatch_sky(frame.device, frame.cmd);
 
                 transition_image_layout(&frame,
                     self.sky_renderer.cube_map.image.raw,
                     vk::ImageLayout::GENERAL,
                     vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
                 );
-                self.sky_renderer.sky_rendered_once = true;
+                
             }
 
-            let clear_values = vec![
-                vk::ClearValue {
-                    color: vk::ClearColorValue {
-                        float32: [0.0, 0.0, 0.0, 1.0],
-                    },
-                },
-                vk::ClearValue {
-                    depth_stencil: vk::ClearDepthStencilValue {
-                        depth: 1.0,
-                        stencil: 0,
-                    },
-                }
-            ];
+            let backbuffer = scope.import(frame.window.swapchain_images[frame.image_index as usize], TextureAccess::Undefined);
+            let depth = scope.import(frame.window.depth_images[frame.image_index as usize].raw, TextureAccess::Undefined);
 
-            transition_image_layout2(
-                &frame,
-                frame.window.swapchain_images[frame.image_index as usize],
-                vk::ImageLayout::UNDEFINED,
-                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-            );
+            scope.add_pass(
+                Pass::new("Main Pass")
+                    .write(backbuffer.clone(), TextureAccess::ColorWrite)
+                    .write(depth, TextureAccess::DepthWrite)
+                    //.read(skybox, TextureAccess::FragmentRead)
+                    .execute(|device, cmd, res| {
 
-            transition_image_layout2(
-                &frame,
-                frame.window.depth_image.raw,
-                vk::ImageLayout::UNDEFINED,
-                vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-            );
+                        let clear_values = vec![
+                            vk::ClearValue {
+                                color: vk::ClearColorValue {
+                                    float32: [0.0, 0.0, 0.0, 1.0],
+                                },
+                            },
+                            vk::ClearValue {
+                                depth_stencil: vk::ClearDepthStencilValue {
+                                    depth: 1.0,
+                                    stencil: 0,
+                                },
+                            }
+                        ];
+                        
+                        unsafe {
 
-            unsafe {
+                            let swapchain_view = &frame.window.image_views[frame.image_index as usize];
 
-                let swapchain_view = &frame.window.image_views[frame.image_index as usize];
+                            let color_attach = vk::RenderingAttachmentInfoKHR::default()
+                                .load_op(vk::AttachmentLoadOp::CLEAR)
+                                .store_op(vk::AttachmentStoreOp::STORE)
+                                .image_view(swapchain_view.raw)
+                                .clear_value(clear_values[0])
+                                .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
 
-                let color_attach = vk::RenderingAttachmentInfoKHR::default()
-                    .load_op(vk::AttachmentLoadOp::LOAD)
-                    .store_op(vk::AttachmentStoreOp::STORE)
-                    .image_view(swapchain_view.raw)
-                    .clear_value(clear_values[0])
-                    .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
+                            let depth_attach = vk::RenderingAttachmentInfoKHR::default()
+                                .load_op(vk::AttachmentLoadOp::CLEAR)
+                                .store_op(vk::AttachmentStoreOp::STORE)
+                                .image_view(frame.window.depth_views[frame.image_index as usize].raw)
+                                .clear_value(clear_values[1])
+                                .image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 
-                let depth_attach = vk::RenderingAttachmentInfoKHR::default()
-                    .load_op(vk::AttachmentLoadOp::CLEAR)
-                    .store_op(vk::AttachmentStoreOp::DONT_CARE)
-                    .image_view(frame.window.depth_view.raw)
-                    .clear_value(clear_values[1])
-                    .image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+                            let render_info = vk::RenderingInfoKHR::default()
+                                .render_area(vk::Rect2D {
+                                    offset: vk::Offset2D { x: 0, y: 0 },
+                                    extent: frame.window.resolution
+                                })
+                                .depth_attachment(&depth_attach)
+                                .color_attachments(std::slice::from_ref(&color_attach))
+                                .layer_count(1);
 
-                let render_info = vk::RenderingInfoKHR::default()
-                    .render_area(vk::Rect2D {
-                        offset: vk::Offset2D { x: 0, y: 0 },
-                        extent: frame.window.resolution
+                            frame.device.cmd_begin_rendering(cmd, &render_info);
+
+                            if track.model.is_none() || !self.is_run {
+                                self.loader2_renderer.draw_fullscreen(&frame, window);
+                                self.loader_renderer.draw_fullscreen(
+                                    &frame, 
+                                    &self.resources.bindless, 
+                                window
+                                );
+                            } else {
+                                self.back_renderer.draw_fullscreen(
+                                    &frame,
+                                    &self.camera,
+                                    &self.resources.bindless,
+                                    &self.sky_renderer
+                                );
+
+                                self.pbr_renderer.draw_mesh(
+                                    &frame,
+                                    &self.resources.bindless, 
+                                    &self.sky_renderer,
+                                    &self.camera,
+                                    car,
+                                    track
+                                );
+                            }
+
+                             if self.debug_ui_enable {
+                                self.egui_renderer.draw(window, &frame);
+                            }
+                            
+                            frame.device.cmd_end_rendering(frame.cmd);
+
+                            car.last_image = frame.image_index;
+                            
+                        }
+
                     })
-                    .depth_attachment(&depth_attach)
-                    .color_attachments(std::slice::from_ref(&color_attach))
-                    .layer_count(1);
 
-                frame.device.cmd_begin_rendering(frame.cmd, &render_info);
-            }
+                
+            );
 
-            if track.model.is_none() || !self.is_run {
-                self.loader2_renderer.draw_fullscreen(&frame, window);
-                self.loader_renderer.draw_fullscreen(
-                    &frame, 
-                    &self.resources.bindless, 
-                window
-                );
-            } else {
-                self.back_renderer.draw_fullscreen(
-                    &frame,
-                    &self.camera,
-                    &self.resources.bindless,
-                    &self.sky_renderer
-                );
-
-                self.pbr_renderer.draw_mesh(
-                    &frame,
-                    &self.resources.bindless, 
-                    &self.sky_renderer,
-                    &self.camera,
-                    car,
-                    track
-                );
-            }
-
-            car.last_image = frame.image_index;
-            
-            if self.debug_ui_enable {
-                self.egui_renderer.draw(window, &frame);
-            }
-
-            unsafe {
-                frame.device.cmd_end_rendering(frame.cmd);
-            }
-
-            transition_image_layout2(
-                &frame,
-                frame.window.swapchain_images[frame.image_index as usize],
-                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                vk::ImageLayout::PRESENT_SRC_KHR,
-            );   
+            let _ = scope.export(backbuffer, TextureAccess::Present);
+            scope.compile();
+            scope.execute(frame.cmd);
 
         }).unwrap();
     }

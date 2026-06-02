@@ -133,7 +133,7 @@ impl Car {
     pub fn new(world: &WorldRenderer, physics: &mut PhysicsEngine) -> VulkanResult<Self> {
         let car = load_gltf(world, open_vfs(r"assets\meshes\336_lrm\car.glb"));
  
-        let car_position = Vec3::new(0.0, 1.0, 0.0);
+        let car_position = Vec3::new(0.0, 10.0, 0.0);
         let max_steering_angle = 35.0f32.to_radians();
         let suspension_height = 0.12;
  
@@ -399,7 +399,7 @@ impl Car {
         }
     }
  
-    pub fn sync_transforms(&mut self, physics: &PhysicsEngine) {
+    pub fn sync_transforms(&mut self, frame_idx: usize, physics: &PhysicsEngine) {
         // --- Кузов ---
         if let Some(body_handle) = self.body_handle {
             let body = physics.rigid_body_set.get(body_handle).unwrap();
@@ -431,7 +431,7 @@ impl Car {
                     .collect();
  
                 self.buffer.as_mut().unwrap()
-                    [(self.last_image + 1) as usize % self.frame_in_flight]
+                    [frame_idx]
                     .upload_data(&transforms)
                     .unwrap();
             }

@@ -45,7 +45,7 @@ impl ApplicationHandler for App {
 
         let window_attributes = Window::default_attributes()
             .with_title("Delivery")
-            .with_inner_size(PhysicalSize::new(1280, 720));
+            .with_inner_size(PhysicalSize::new(840, 480));
 
         let window = event_loop
             .create_window(window_attributes)

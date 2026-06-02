@@ -169,7 +169,7 @@ impl CarRenderer {
                     vk::PipelineBindPoint::GRAPHICS, 
                     self.layout.raw, 
                     0, 
-                    &[bindless.set, track.set.unwrap(), camera.set], 
+                    &[bindless.set, track.set.unwrap(), camera.sets[frame.window.current_frame % frame.device.frame_in_flight]], 
                     &[]
                 );
 

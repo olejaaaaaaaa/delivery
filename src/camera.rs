@@ -13,10 +13,10 @@ use winit::event::{DeviceEvent, ElementState, KeyEvent, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
 pub struct Camera {
-    pub set: vk::DescriptorSet,
+    pub sets: Vec<vk::DescriptorSet>,
     pub last_data: CameraData,
     pub rig: CameraRig,
-    pub buffer: GpuBuffer,
+    pub buffers: Vec<GpuBuffer>,
     move_speed: f32,
     mouse_sensitivity: f32,
     pub(crate) camera_pitch: f32,
@@ -57,12 +57,13 @@ impl Camera {
             )
             .build();
 
-        let buffer = GpuBufferBuilder::cpu_only(&ctx.device)
-            .size(size_of::<CameraData>() as u64)
-            .usage(vk::BufferUsageFlags::UNIFORM_BUFFER)
-            .build()?;
+        let buffers: Vec<GpuBuffer> = (0..ctx.frame_in_flight()).map(|_| {
+            GpuBufferBuilder::cpu_only(&ctx.device)
+                .size(size_of::<CameraData>() as u64)
+                .usage(vk::BufferUsageFlags::UNIFORM_BUFFER)
+                .build()
+        }).collect::<Result<_, _>>()?;
 
-        
         let set_layout = DescriptorSetLayoutBuilder::new(&ctx.device)
             .bindings(&[
                 vk::DescriptorSetLayoutBinding::default()
@@ -72,30 +73,34 @@ impl Camera {
             ])
             .build()?;
 
-        let set = res.pool.create_descriptor_set(&ctx.device, &[set_layout.raw])?[0];
+        let sets = res.pool.create_descriptor_set(
+            &ctx.device, 
+            &vec![set_layout.raw; ctx.frame_in_flight()]
+        )?;
 
         unsafe {
+            for (buf, set) in buffers.iter().zip(sets.iter()) {
+                let buffer_info = vk::DescriptorBufferInfo::default()
+                    .buffer(buf.raw)
+                    .offset(0)
+                    .range(vk::WHOLE_SIZE);
 
-            let buffer_info = vk::DescriptorBufferInfo::default()   
-                .buffer(buffer.raw)
-                .offset(0)
-                .range(vk::WHOLE_SIZE);
+                let write = vk::WriteDescriptorSet::default()
+                    .descriptor_count(1)
+                    .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                    .dst_set(*set)
+                    .dst_binding(0)
+                    .dst_array_element(0)
+                    .buffer_info(std::slice::from_ref(&buffer_info));
 
-            let write = vk::WriteDescriptorSet::default()
-                .descriptor_count(1)
-                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                .dst_set(set)
-                .dst_binding(0)
-                .dst_array_element(0)
-                .buffer_info(std::slice::from_ref(&buffer_info));
-
-            ctx.device.update_descriptor_sets(&[write], &[]);
+                ctx.device.update_descriptor_sets(&[write], &[]);
+            }
         }
 
         Ok(Self {
-            set,
+            sets,
             rig,
-            buffer,
+            buffers,
             camera_yaw_offset: 0.0,
             camera_pitch: 0.0,
             last_data: CameraData::zeroed(),
@@ -131,7 +136,7 @@ impl Camera {
         }
     }
 
-    pub fn update(&mut self, dt: f32, aspect: f32) -> CameraData {
+    pub fn update(&mut self, dt: f32, aspect: f32, frame_idx: usize) -> CameraData {
         let mut move_vec = glam::Vec3::ZERO;
         if self.forward  { move_vec += glam::Vec3::Z * -1.0; }
         if self.backward { move_vec += glam::Vec3::Z; }
@@ -187,7 +192,7 @@ impl Camera {
         //println!("view: {:?}", view);
 
         self.last_data = data;
-        self.buffer.upload_data(&[data]).unwrap();
+        self.buffers[frame_idx].upload_data(&[data]).unwrap();
         data
     }
 }

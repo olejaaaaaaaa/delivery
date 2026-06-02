@@ -110,11 +110,11 @@ impl SkyRenderer {
         })
     }
 
-    pub fn dispatch_sky(&self, frame: &FrameContext) {
+    pub fn dispatch_sky(&self, device: &ash::Device, cmd: vk::CommandBuffer) {
         unsafe {
-            frame.device.cmd_bind_pipeline(frame.cmd, vk::PipelineBindPoint::COMPUTE, self.pipeline.raw);
-            frame.device.cmd_bind_descriptor_sets(
-            frame.cmd,
+            device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, self.pipeline.raw);
+            device.cmd_bind_descriptor_sets(
+            cmd,
             vk::PipelineBindPoint::COMPUTE,
                 self.layout.raw,
                 0,
@@ -146,15 +146,15 @@ impl SkyRenderer {
 
             //println!("sun dir: {:?}", dir);
 
-            frame.device.cmd_push_constants(
-                frame.cmd,
+            device.cmd_push_constants(
+                cmd,
                 self.layout.raw,
                 vk::ShaderStageFlags::COMPUTE,
                 0,
                 bytemuck::bytes_of(&push),
             );
 
-            frame.device.cmd_dispatch(frame.cmd, 128, 128, 6);
+            device.cmd_dispatch(cmd, 128, 128, 6);
         }
     }
 

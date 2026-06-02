@@ -189,7 +189,10 @@ pub fn load_gltf<P: AsRef<Path>>(world: &WorldRenderer, path: P) ->  std::thread
 
         let (gltf, buffers, images) = match gltf::import(path) {
             Ok(result) => result,
-            Err(err) => panic!("AAAA!"),
+            Err(err) => { 
+                println!("Failed to load GLTF: {:?}", err);
+                panic!("AAAA!")
+            }
         };
 
         let mut textures = vec![];

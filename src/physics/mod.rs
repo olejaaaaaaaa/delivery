@@ -18,7 +18,7 @@ pub struct PhysicsEngine {
 impl PhysicsEngine {
 
     pub fn update(&mut self, dt: f32) {
-        self.integration_params.dt = dt;
+        //self.integration_params.dt = dt;
         self.phys_pipeline.step(
             self.gravity,
             &self.integration_params,

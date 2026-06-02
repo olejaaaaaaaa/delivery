@@ -74,14 +74,10 @@ impl RenderContext {
             }
         }
 
-        let min_image_count = if caps.max_image_count >= 3 {
-            3
-        } else {
-            caps.min_image_count
-        };
+        let min_image_count = 3;
 
         let swapchain = SwapchainBuilder::new(&device)
-            .min_image_count(min_image_count)
+            .min_image_count(3)
             .surface(&surface)
             .present_mode(vk::PresentModeKHR::FIFO)
             .instance(&instance)
@@ -137,6 +133,34 @@ impl RenderContext {
             swapchain_images.push(i);
         }
 
+        
+        let mut depth_images = vec![];
+        let mut depth_views = vec![];
+
+        for _ in 0..swapchain_images.len() {
+            let depth_image = ImageBuilder::new(&device)
+                .extent(caps.current_extent.into())
+                .format(vk::Format::D32_SFLOAT)
+                .usage(vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT)
+                .build()?;
+
+            let depth_view = ImageViewBuilder::new(&device)
+                .format(vk::Format::D32_SFLOAT)
+                .image(depth_image.raw)
+                .subresource_range(vk::ImageSubresourceRange {
+                    aspect_mask: vk::ImageAspectFlags::DEPTH,
+                    base_mip_level: 0,
+                    level_count: 1,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                })
+                .view_type(vk::ImageViewType::TYPE_2D)
+                .build()?;
+
+            depth_images.push(depth_image);
+            depth_views.push(depth_view);
+        }
+
         let mut frame_buffers = vec![];
 
         for i in &image_views {
@@ -168,9 +192,9 @@ impl RenderContext {
                 resolution: caps.current_extent,
                 frame_sync,
                 image_views,
-                depth_image,
+                depth_images,
                 frame_buffers,
-                depth_view,
+                depth_views,
                 current_frame: 0,
                 surface,
                 swapchain,
@@ -202,8 +226,8 @@ impl Drop for RenderContext {
                 i.destroy(device);
             }
 
-            window.depth_view.destroy(device);
-            window.depth_image.destroy(device);
+            //window.depth_view.destroy(device);
+            //window.depth_image.destroy(device);
             window.render_pass.destroy(device);
 
             for i in window.frame_buffers.drain(..) {

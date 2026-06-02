@@ -145,6 +145,15 @@ checksum = "175571dd1d178ced59193a6fc02dde1b972eb0bc56c892cde9beeceac5bf0f6b"
 
 [[package]]
 name = "ash"
+version = "0.29.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "003d1fb2eb12eb06d4a03dbe02eea67a9fac910fa97932ab9e3a75b96a1ea5e5"
+dependencies = [
+ "shared_library",
+]
+
+[[package]]
+name = "ash"
 version = "0.38.0+1.3.281"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0bb44936d800fea8f016d7f2311c6a4f97aebd5dc86f09906139ec848cf3a46f"
@@ -158,7 +167,7 @@ version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52bca67b61cb81e5553babde81b8211f713cb6db79766f80168f3e5f40ea6c82"
 dependencies = [
- "ash",
+ "ash 0.38.0+1.3.281",
  "raw-window-handle",
  "raw-window-metal",
 ]
@@ -713,7 +722,7 @@ checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 name = "delivery"
 version = "0.1.0"
 dependencies = [
- "ash",
+ "ash 0.38.0+1.3.281",
  "ash-window",
  "bytemuck",
  "dolly",
@@ -722,6 +731,7 @@ dependencies = [
  "egui-winit",
  "egui_demo_lib",
  "egui_extras",
+ "frame-graph",
  "glam 0.30.10",
  "gltf",
  "gpu-allocator",
@@ -737,6 +747,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tracing",
  "tracing-subscriber",
+ "vk-sync",
  "winit",
 ]
 
@@ -847,7 +858,7 @@ version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "598d16e7691705baf20e797a377890a16db80806b30648c0c002f6d6cbd0a28d"
 dependencies = [
- "ash",
+ "ash 0.38.0+1.3.281",
  "egui",
  "log",
  "thiserror 2.0.18",
@@ -1140,6 +1151,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
 dependencies = [
  "percent-encoding",
+]
+
+[[package]]
+name = "frame-graph"
+version = "0.1.0"
+source = "git+https://github.com/olejaaaaaaaa/frame-graph#d7fb0faf85b9257efcad08428913fcb0242afbed"
+dependencies = [
+ "ash 0.38.0+1.3.281",
+ "gpu-allocator",
+ "log",
+ "parking_lot",
+ "slotmap",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -1473,7 +1497,7 @@ version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51255ea7cfaadb6c5f1528d43e92a82acb2b96c43365989a28b2d44ee38f8795"
 dependencies = [
- "ash",
+ "ash 0.38.0+1.3.281",
  "log",
  "objc2 0.6.4",
  "objc2-foundation 0.3.2",
@@ -3337,6 +3361,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "shared_library"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a9e7e0f2bfae24d8a5b5a66c5b257a83c7412304311512a0c054cd5e619da11"
+dependencies = [
+ "lazy_static",
+ "libc",
+]
+
+[[package]]
 name = "shlex"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4058,6 +4092,15 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "vk-sync"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "125fb54d23348085239e8cb591d0056b97734a6ad946f29f4317d7be15e6489a"
+dependencies = [
+ "ash 0.29.0",
+]
 
 [[package]]
 name = "walkdir"

@@ -72,6 +72,9 @@ impl GameRenderer {
                     PhysicalKey::Code(KeyCode::KeyS) => self.input_state.s_pressed = pressed,
                     PhysicalKey::Code(KeyCode::KeyA) => self.input_state.a_pressed = pressed,
                     PhysicalKey::Code(KeyCode::KeyD) => self.input_state.d_pressed = pressed,
+                    PhysicalKey::Code(KeyCode::KeyQ) => {
+                        //self.car.position = Vec3::new(0.0, 10.0, 0.0);
+                    }
                     _ => {}
                 }
             },
@@ -134,15 +137,18 @@ impl GameRenderer {
                     steering = -1.1;  // поворот направо (положительный угол)
                 }
 
+                let phys_time = Instant::now();
+
                 if self.track.model.is_some() {
 
                     self.physics.update(dt);
-                    self.car.sync_transforms(&self.physics);
                     self.car.update_motors(&mut self.physics.impulse, thrust, steering);
-                    
-                    
-
+                    self.car.sync_transforms((self.renderer.ctx.window.read().current_frame + 1) % self.renderer.ctx.device.frame_in_flight, &self.physics );
+                                        
                 }
+
+                self.renderer.egui_renderer.phys_time = phys_time.elapsed().as_secs_f32() * 1000.0;
+                self.renderer.egui_renderer.phys_max_time = self.renderer.egui_renderer.phys_max_time.max(phys_time.elapsed().as_secs_f32() * 1000.0);
 
                 self.track.load_if_finish(&self.renderer, &mut self.physics);
                 self.car.load_if_finish(&self.renderer, &mut self.physics);

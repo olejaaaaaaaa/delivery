@@ -22,9 +22,9 @@ pub struct WindowManager {
     /// Index of current frame
     pub(crate) current_frame: usize,
     /// Depth buffer image
-    pub(crate) depth_image: Image,
+    pub(crate) depth_images: Vec<Image>,
     /// View into the depth buffer
-    pub(crate) depth_view: ImageView,
+    pub(crate) depth_views: Vec<ImageView>,
     /// Render pass defining attachment formats and operations
     pub(crate) render_pass: RenderPass,
     /// Window surface for presentation
@@ -38,6 +38,8 @@ impl WindowManager {
     /// new window size
     pub fn resize(&mut self, device: &GraphicsDevice, width: u32, height: u32) -> VulkanResult<()> {
         profiling::scope!("WindowManager::resize");
+
+        //return Ok(());
 
         info!("New size: {:?}", (width, height));
 
@@ -72,32 +74,13 @@ impl WindowManager {
 
         let swapchain = SwapchainBuilder::new(device)
             .old_swapchain(self.swapchain.raw)
-            .min_image_count(2)
+            .min_image_count(3)
             .surface(&self.surface)
             .present_mode(vk::PresentModeKHR::FIFO)
             .instance(&device.instance)
             .color_space(color_space)
             .extent(extent)
             .format(format)
-            .build()?;
-
-        let depth_image = ImageBuilder::new(device)
-            .extent(caps.current_extent.into())
-            .format(vk::Format::D32_SFLOAT)
-            .usage(vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT)
-            .build()?;
-
-        let depth_view = ImageViewBuilder::new(device)
-            .format(vk::Format::D32_SFLOAT)
-            .image(depth_image.raw)
-            .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask: vk::ImageAspectFlags::DEPTH,
-                base_mip_level: 0,
-                level_count: 1,
-                base_array_layer: 0,
-                layer_count: 1,
-            })
-            .view_type(vk::ImageViewType::TYPE_2D)
             .build()?;
 
         let mut image_views = vec![];
@@ -121,24 +104,51 @@ impl WindowManager {
             swapchain_images.push(i);
         }
 
-        let mut frame_buffers = vec![];
+        let mut depth_images = vec![];
+        let mut depth_views = vec![];
 
-        for i in &image_views {
-            let frame_buffer = FrameBufferBuilder::new(device)
-                .render_pass(self.render_pass.raw)
-                .attachments(&[i.raw, depth_view.raw])
-                .extent(caps.current_extent)
-                .layers(1)
+        for _ in 0..swapchain_images.len() {
+            let depth_image = ImageBuilder::new(device)
+                .extent(caps.current_extent.into())
+                .format(vk::Format::D32_SFLOAT)
+                .usage(vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT)
                 .build()?;
 
-            frame_buffers.push(frame_buffer);
+            let depth_view = ImageViewBuilder::new(device)
+                .format(vk::Format::D32_SFLOAT)
+                .image(depth_image.raw)
+                .subresource_range(vk::ImageSubresourceRange {
+                    aspect_mask: vk::ImageAspectFlags::DEPTH,
+                    base_mip_level: 0,
+                    level_count: 1,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                })
+                .view_type(vk::ImageViewType::TYPE_2D)
+                .build()?;
+
+            depth_images.push(depth_image);
+            depth_views.push(depth_view);
         }
 
-        self.depth_view.destroy(device);
-        self.depth_view = depth_view;
+        // let mut frame_buffers = vec![];
 
-        self.depth_image.destroy(device);
-        self.depth_image = depth_image;
+        // for i in &image_views {
+        //     let frame_buffer = FrameBufferBuilder::new(device)
+        //         .render_pass(self.render_pass.raw)
+        //         .attachments(&[i.raw, depth_view.raw])
+        //         .extent(caps.current_extent)
+        //         .layers(1)
+        //         .build()?;
+
+        //     frame_buffers.push(frame_buffer);
+        // }
+
+        //self.depth_view.destroy(device);
+        self.depth_views = depth_views;
+
+        //self.depth_image.destroy(device);
+        self.depth_images = depth_images;
 
         for i in &self.image_views {
             i.destroy(device);
@@ -146,11 +156,11 @@ impl WindowManager {
 
         self.image_views = image_views;
 
-        for i in &self.frame_buffers {
-            i.destroy(device);
-        }
+        // for i in &self.frame_buffers {
+        //     i.destroy(device);
+        // }
 
-        self.frame_buffers = frame_buffers;
+        //self.frame_buffers = frame_buffers;
 
         self.swapchain.destroy();
         self.swapchain = swapchain;
