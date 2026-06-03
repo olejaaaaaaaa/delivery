@@ -62,6 +62,7 @@ impl ApplicationHandler for App {
         //     .unwrap();
 
         //window.set_fullscreen(Some(Fullscreen::Exclusive(video_mode)));
+        //window.set_fullscreen(Some(Fullscreen::Borderless(None)));
 
         let game_renderer = GameRenderer::new(&window);
         self.game = Some(game_renderer);

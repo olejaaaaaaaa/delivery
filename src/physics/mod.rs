@@ -1,5 +1,9 @@
+
+
+
+
 use glam::Vec3;
-use rapier3d::{dynamics::{CCDSolver, GenericJoint, ImpulseJointHandle, ImpulseJointSet, IntegrationParameters, IslandManager, MultibodyJointSet, RigidBody, RigidBodyBuilder, RigidBodyHandle, RigidBodySet}, geometry::{BroadPhaseBvh, Collider, ColliderBuilder, ColliderHandle, ColliderSet, DefaultBroadPhase, NarrowPhase}, math::Vector, pipeline::PhysicsPipeline};
+use rapier3d::{dynamics::{CCDSolver, GenericJoint, ImpulseJointHandle, ImpulseJointSet, IntegrationParameters, IslandManager, MultibodyJointSet, RigidBody, RigidBodyBuilder, RigidBodyHandle, RigidBodySet}, geometry::{BroadPhaseBvh, Collider, ColliderBuilder, ColliderHandle, ColliderSet, DefaultBroadPhase, NarrowPhase}, math::Vector, pipeline::{PhysicsPipeline, QueryPipeline}};
 
 pub struct PhysicsEngine {
     pub rigid_body_set: RigidBodySet,
@@ -8,8 +12,8 @@ pub struct PhysicsEngine {
     phys_pipeline: PhysicsPipeline,
     integration_params: IntegrationParameters,
     island_manager: IslandManager,
-    broad_phase: BroadPhaseBvh,
-    narrow_phase: NarrowPhase,
+    pub broad_phase: BroadPhaseBvh,
+    pub narrow_phase: NarrowPhase,
     pub impulse: ImpulseJointSet,
     multi: MultibodyJointSet,
     ccd_solver: CCDSolver,

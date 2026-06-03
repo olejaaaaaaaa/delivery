@@ -1,9 +1,9 @@
 use std::time::Instant;
 
-use dolly::drivers::{LookAt, Position, Rotation, YawPitch};
+use dolly::drivers::{Arm, LookAt, Position, Rotation, YawPitch};
 use glam::Vec3;
 use mint::Point3;
-use rapier3d::dynamics::ImpulseJoint;
+use rapier3d::{dynamics::ImpulseJoint, pipeline::{QueryFilter, QueryPipeline}};
 use rodio::cpal::FromSample;
 use winit::{event::{ElementState, KeyEvent, WindowEvent}, event_loop::ActiveEventLoop, keyboard::{KeyCode, PhysicalKey}, window::{CursorGrabMode, Window, WindowId}};
 use crate::{Car, PhysicsEngine, Track, WorldRenderer, open_vfs, play_music};
@@ -95,7 +95,6 @@ impl GameRenderer {
                         z: self.car.position.z,
                     };
 
-                    // Извлекаем yaw из кватерниона машины
                     let car_quat = glam::Quat::from_xyzw(
                         self.car.rotation.x,
                         self.car.rotation.y,
@@ -116,37 +115,84 @@ impl GameRenderer {
                         y: self.car.position.y + 1.0,
                         z: self.car.position.z,
                     };
-                }
 
+                    self.renderer.camera.rig.update(dt);
+
+                    let cam_pos = self.renderer.camera.rig.final_transform.position;
+                    let target = glam::Vec3::new(
+                        self.car.position.x,
+                        self.car.position.y + 1.0,
+                        self.car.position.z,
+                    );
+                    let cam = glam::Vec3::new(cam_pos.x, cam_pos.y, cam_pos.z);
+
+                    let dir = (cam - target).normalize();
+                    let dist = (cam - target).length();
+
+                    let ray = rapier3d::geometry::Ray::new(
+                        Vec3::new(target.x, target.y, target.z),
+                        Vec3::new(dir.x, dir.y, dir.z),
+                    );
+
+                    let filter = QueryFilter::default()
+                        .exclude_rigid_body(self.car.body_handle.unwrap());
+
+                    let query_pipeline = self.physics.broad_phase.as_query_pipeline(
+                        self.physics.narrow_phase.query_dispatcher(),
+                        &self.physics.rigid_body_set,
+                        &self.physics.collider_set,
+                        filter
+                    );
+
+                    let max_dist = 6.5_f32;
+
+                    let desired_z = if let Some((_, toi)) = query_pipeline.cast_ray(&ray, max_dist, false) {
+                        -((toi - 0.3_f32))
+                    } else {
+                        -6.5
+                    };
+
+                    let arm = self.renderer.camera.rig.driver_mut::<Arm>();
+                    let current_z = arm.offset.z;
+
+                    arm.offset.z = if desired_z > current_z {
+                       
+                        desired_z
+                    } else {
+                      
+                        current_z + (desired_z - current_z) * (dt * 5.0).min(1.0)
+                    };
+   
+
+                }
                 
                 let mut thrust = 0.0;
                 let mut steering = 0.0;
                 
                 // W/S - тяга
                 if self.input_state.w_pressed {
-                    thrust = -1.4; // вперед
+                    thrust = -1.4;
                 } else if self.input_state.s_pressed {
-                    thrust = 1.4;  // назад
+                    thrust = 1.4;
                 }
-                // Если нажаты обе или ни одной - thrust = 0.0
-                
-                // A/D - поворот (только если есть thrust, иначе поворачиваться не будет)
+
                 if self.input_state.a_pressed {
-                    steering = 1.1; // поворот налево (отрицательный угол)
+                    steering = 1.1;
                 } else if self.input_state.d_pressed {
-                    steering = -1.1;  // поворот направо (положительный угол)
+                    steering = -1.1;
                 }
 
                 let phys_time = Instant::now();
 
                 if self.track.model.is_some() {
-
                     self.physics.update(dt);
                     self.car.update_motors(&mut self.physics.impulse, thrust, steering);
-                    self.car.sync_transforms((self.renderer.ctx.window.read().current_frame + 1) % self.renderer.ctx.device.frame_in_flight, &self.physics );
-                                        
+                    self.car.sync_transforms((self.renderer.ctx.window.read().current_frame + 1) % self.renderer.ctx.device.frame_in_flight, &self.physics);           
                 }
 
+                self.renderer.egui_renderer.gpu_name = self.renderer.ctx.device.logical_device.props2.properties.device_name_as_c_str().unwrap().to_str().unwrap().to_string();
+                self.renderer.egui_renderer.width = window.inner_size().width;
+                self.renderer.egui_renderer.height = window.inner_size().height;
                 self.renderer.egui_renderer.phys_time = phys_time.elapsed().as_secs_f32() * 1000.0;
                 self.renderer.egui_renderer.phys_max_time = self.renderer.egui_renderer.phys_max_time.max(phys_time.elapsed().as_secs_f32() * 1000.0);
 

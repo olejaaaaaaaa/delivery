@@ -10,6 +10,9 @@ use crate::{core::{CommandPool, CommandPoolBuilder, Queue}, render_context::Rend
 
 
 pub struct EguiRenderer {
+    pub gpu_name: String,
+    pub width: u32,
+    pub height: u32,
     pub frame_time: f32,
     pub max_frame_time: f32,
     pub phys_time: f32,
@@ -55,6 +58,9 @@ impl EguiRenderer {
         let pool = CommandPoolBuilder::reset(&ctx.device).build().unwrap();
 
         Self { 
+            gpu_name: String::new(),
+            width: 0,
+            height: 0,
             max_frame_time: 0.0,
             phys_max_time: 0.0,
             phys_time: 0.0,
@@ -94,8 +100,10 @@ impl EguiRenderer {
             egui::Window::new("Статистика")
                 .resizable(true)        
                 .movable(true)          
-                .default_size([200.0, 100.0]) 
+                .default_size([300.0, 100.0]) 
                 .show(ctx,  |ui| {
+                    ui.label(format!("gpu: {:?}", self.gpu_name));
+                    ui.label(format!("resolution: {}x{}", self.width, self.height));
                     ui.label(format!("frame time: {:?}ms", self.frame_time));
                     ui.label(format!("phys time: {:?}ms", self.phys_time));
                     ui.label(format!("max phys time: {:?}ms", self.phys_max_time));

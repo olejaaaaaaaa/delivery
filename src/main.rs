@@ -70,9 +70,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     mount_vfs("shader://", "../");
     mount_vfs("shader://", "../../");
     mount_vfs("shader://", "../../../");
-    mount_vfs("shader://", "../../../assets/shaders/spv");
-    mount_vfs("shader://", "../../../assets/shaders");
-    mount_vfs("shader://", "../../../assets");
+    mount_vfs("shader://", "./../../assets/shaders/spv");
+    mount_vfs("shader://", "./../../assets/shaders");
+    mount_vfs("shader://", "./../../assets");
 
     // sound://
     mount_vfs("sound://", "./assets/sounds");
@@ -80,9 +80,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     mount_vfs("sound://", "./");
     mount_vfs("sound://", "../");
     mount_vfs("sound://", "../../");
-    mount_vfs("sound://", "../../../");
-    mount_vfs("sound://", "../../../assets/sounds");
-    mount_vfs("sound://", "../../../assets");
+    mount_vfs("sound://", "./../../");
+    mount_vfs("sound://", "./../../assets/sounds");
+    mount_vfs("sound://", "./../../assets");
 
     // texture://
     mount_vfs("texture://", "./assets/textures");
@@ -90,9 +90,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     mount_vfs("texture://", "./");
     mount_vfs("texture://", "../");
     mount_vfs("texture://", "../../");
-    mount_vfs("texture://", "../../../");
-    mount_vfs("texture://", "../../../assets/textures");
-    mount_vfs("texture://", "../../../assets");
+    mount_vfs("texture://", "./../../");
+    mount_vfs("texture://", "./../../assets/textures");
+    mount_vfs("texture://", "./../../assets");
 
     // mesh://
     mount_vfs("mesh://", "./assets/meshes");
@@ -100,9 +100,25 @@ fn main() -> Result<(), Box<dyn Error>> {
     mount_vfs("mesh://", "./");
     mount_vfs("mesh://", "../");
     mount_vfs("mesh://", "../../");
-    mount_vfs("mesh://", "../../../");
+    mount_vfs("mesh://", "./../../");
     mount_vfs("mesh://", "../../../assets/meshes");
     mount_vfs("mesh://", "../../../assets");
+    mount_vfs("mesh://", "./../../assets/meshes");
+    mount_vfs("mesh://", "./../../assets");
+    mount_vfs("mesh://", "../../../assets/meshes/336_lrm");
+    mount_vfs("mesh://", "../../../assets/336_lrm");
+    mount_vfs("mesh://", "./../../assets/meshes/336_lrm");
+    mount_vfs("mesh://", "./../../assets/336_lrm");
+    
+    mount_vfs("mesh://", "../../../assets/meshes/pica_pica_-_mini_diorama_01");
+    mount_vfs("mesh://", "../../../assets/pica_pica_-_mini_diorama_01");
+    mount_vfs("mesh://", "./../../assets/meshes/pica_pica_-_mini_diorama_01");
+    mount_vfs("mesh://", "./../../assets");
+    mount_vfs("mesh://", "../../../assets/meshes/pica_pica_-_mini_diorama_01");
+    mount_vfs("mesh://", "../../../assets/pica_pica_-_mini_diorama_01");
+    mount_vfs("mesh://", "./../../assets/meshes/pica_pica_-_mini_diorama_01");
+    mount_vfs("mesh://", "./../../assets/pica_pica_-_mini_diorama_01");
+    
 
     // font://
     mount_vfs("font://", "./assets/fonts");
@@ -110,9 +126,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     mount_vfs("font://", "./");
     mount_vfs("font://", "../");
     mount_vfs("font://", "../../");
-    mount_vfs("font://", "../../../");
-    mount_vfs("font://", "../../../assets/fonts");
-    mount_vfs("font://", "../../../assets");
+    mount_vfs("font://", "./../../");
+    mount_vfs("font://", "./../../assets/fonts");
+    mount_vfs("font://", "./../../assets");
 
     // res://
     mount_vfs("res://", "./assets/shaders/spv");
@@ -128,9 +144,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     mount_vfs("res://", "../../../assets/shaders/spv");
     mount_vfs("res://", "../../../assets/shaders");
     mount_vfs("res://", "../../../assets/meshes");
-    mount_vfs("res://", "../../../assets/sounds");
-    mount_vfs("res://", "../../../assets/textures");
-    mount_vfs("res://", "../../../assets");
+    mount_vfs("res://", "./../../assets/sounds");
+    mount_vfs("res://", "./../../assets/textures");
+    mount_vfs("res://", "./../../assets");
 
     let event_loop = EventLoop::new()?;
     event_loop.set_control_flow(ControlFlow::Poll);

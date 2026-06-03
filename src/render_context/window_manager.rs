@@ -76,7 +76,7 @@ impl WindowManager {
             .old_swapchain(self.swapchain.raw)
             .min_image_count(3)
             .surface(&self.surface)
-            .present_mode(vk::PresentModeKHR::FIFO)
+            .present_mode(vk::PresentModeKHR::FIFO_RELAXED)
             .instance(&device.instance)
             .color_space(color_space)
             .extent(extent)

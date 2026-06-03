@@ -79,7 +79,7 @@ impl RenderContext {
         let swapchain = SwapchainBuilder::new(&device)
             .min_image_count(3)
             .surface(&surface)
-            .present_mode(vk::PresentModeKHR::FIFO)
+            .present_mode(vk::PresentModeKHR::FIFO_RELAXED)
             .instance(&instance)
             .color_space(color_space)
             .extent(extent)
